@@ -4,7 +4,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
 import { Check, ChevronRight, Download, Pencil, Plus, RefreshCw, Sparkles, Wallet as WalletIcon, X } from "lucide-react";
 import {
-  CHAIN_COLORS, CHAIN_LABEL, ChainBadge, Chain, Holding, ManualHolding, ValueCounter, Wallet,
+  AssetIcon, CHAIN_COLORS, CHAIN_LABEL, ChainBadge, Chain, Holding, ManualHolding, ValueCounter, Wallet,
   fmtAmt, fmtUSD,
 } from "./shared";
 import EvolutionChart, { PortfolioHistoryPoint, HistoryRange } from "./EvolutionChart";
@@ -293,6 +293,7 @@ export default function PortfolioView({
                           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ background: color || "var(--line)", border: color ? "none" : "1px solid var(--faint)" }}
                         />
+                        <AssetIcon symbol={h.symbol} size={16} />
                         <span className="font-medium" style={{ color: "var(--ink)" }}>{h.symbol}</span>
                         <span className="font-mono" style={{ color: "var(--dim)" }}>{fmtAmt(h.amount, 4)}</span>
                       </div>
@@ -346,6 +347,7 @@ export default function PortfolioView({
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colorForSymbol[h.symbol] || "var(--line)" }} />
+                      <AssetIcon symbol={h.symbol} size={18} />
                       <span className="text-[14px] font-semibold" style={{ color: "var(--ink)" }}>{h.symbol}</span>
                     </div>
                     <span className="font-mono text-[14px] font-bold" style={{ color: "var(--accent)" }}>{fmtUSD(h.value)}</span>
@@ -365,7 +367,9 @@ export default function PortfolioView({
             <tbody>
               {holdings.map((h) => (
                 <tr key={h.symbol} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
-                  <td className="p-2 font-medium" style={{ color: "var(--ink)" }}>{h.symbol}</td>
+                  <td className="p-2 font-medium" style={{ color: "var(--ink)" }}>
+                    <div className="flex items-center gap-2"><AssetIcon symbol={h.symbol} size={18} />{h.symbol}</div>
+                  </td>
                   <td className="p-2 font-mono" style={{ color: "var(--dim)" }}>{fmtAmt(h.amount)}</td>
                   <td className="p-2 font-mono" style={{ color: "var(--dim)" }}>{fmtUSD(h.price)}</td>
                   <td className="p-2 font-mono font-semibold" style={{ color: "var(--ink)" }}>{fmtUSD(h.value)}</td>

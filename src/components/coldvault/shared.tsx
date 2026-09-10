@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FIXED_STABLECOINS, SYMBOL_COINGECKO } from "@/lib/assets";
+import { FIXED_STABLECOINS, SYMBOL_COINGECKO, SYMBOL_LOGO } from "@/lib/assets";
 import { fmtAmt, fmtDate, fmtUSD, shortAddr } from "@/lib/format";
 export { FIXED_STABLECOINS, SYMBOL_COINGECKO, fmtAmt, fmtDate, fmtUSD, shortAddr };
 
@@ -28,13 +28,41 @@ export const CHAIN_BADGE: Record<Chain, { bg: string; fg: string; label: string 
   TRON: { bg: "#008747", fg: "#FFFFFF", label: "T" },
 };
 
-export function ChainBadge({ chain, size = 20 }: { chain: Chain; size?: number }) {
-  const c = CHAIN_BADGE[chain];
+const CHAIN_TO_SYMBOL: Record<Chain, string> = { BTC: "BTC", ETH: "ETH", TRON: "TRX" };
+
+/**
+ * Logo real del activo (CDN de CoinGecko) cuando lo conocemos; si no hay logo mapeado para ese
+ * símbolo, o si la imagen falla al cargar (sin red, CDN caído), cae al círculo de color con letra
+ * que usaba toda la app antes — nunca se queda en un ícono roto.
+ */
+export function AssetIcon({
+  symbol, size = 20, fallbackBg, fallbackFg, fallbackLabel,
+}: { symbol: string; size?: number; fallbackBg?: string; fallbackFg?: string; fallbackLabel?: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = SYMBOL_LOGO[symbol.toUpperCase()];
+  if (src && !failed) {
+    return (
+      <img
+        src={src} alt={symbol} width={size} height={size}
+        className="rounded-full flex-shrink-0"
+        style={{ width: size, height: size, objectFit: "cover" }}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
   return (
-    <span className="cv-chain-badge" style={{ width: size, height: size, background: c.bg, color: c.fg, fontSize: size * 0.52 }}>
-      {c.label}
+    <span
+      className="cv-chain-badge flex-shrink-0"
+      style={{ width: size, height: size, background: fallbackBg || "var(--panel2)", color: fallbackFg || "var(--dim)", fontSize: size * (fallbackLabel ? 0.52 : 0.42) }}
+    >
+      {fallbackLabel || symbol.slice(0, 1).toUpperCase()}
     </span>
   );
+}
+
+export function ChainBadge({ chain, size = 20 }: { chain: Chain; size?: number }) {
+  const c = CHAIN_BADGE[chain];
+  return <AssetIcon symbol={CHAIN_TO_SYMBOL[chain]} size={size} fallbackBg={c.bg} fallbackFg={c.fg} fallbackLabel={c.label} />;
 }
 
 export function useTheme() {
