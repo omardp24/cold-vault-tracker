@@ -1,0 +1,7 @@
+node_modules
+.next
+data/db.json
+data/uploads
+.env.local
+.DS_Store
+*.tsbuildinfo

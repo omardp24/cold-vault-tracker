@@ -1,0 +1,287 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #071a20;
+  --panel: #0c242c;
+  --panel2: #102e38;
+  --line: #17414d;
+  --line2: #1e5060;
+  --ink: #eaf2f4;
+  --dim: #8fa9b1;
+  --faint: #5f7f89;
+  --accent: #f77b1c;
+  --amber: #f8b345;
+  --pos: #3ed598;
+  --neg: #ff6b5a;
+  --tint: rgba(247, 123, 28, 0.13);
+  --glow: 0 8px 30px rgba(247, 123, 28, 0.28);
+
+  --font-display: var(--font-sora), system-ui, sans-serif;
+  --font-impact: var(--font-sora), system-ui, sans-serif;
+  --font-sans: var(--font-sora), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), monospace;
+}
+
+[data-theme="light"] {
+  --bg: #f2f5f6;
+  --panel: #ffffff;
+  --panel2: #f6f9fa;
+  --line: #dce5e8;
+  --line2: #c9d8dd;
+  --ink: #0e2830;
+  --dim: #6b8087;
+  --faint: #9badb3;
+  --accent: #e06a0c;
+  --amber: #c98a18;
+  --pos: #00794a;
+  --neg: #c0392b;
+  --tint: #fdf0e4;
+  --glow: 0 8px 24px rgba(247, 123, 28, 0.22);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+::placeholder {
+  color: var(--faint);
+}
+
+.cv-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 9px 18px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease;
+  font-family: var(--font-display);
+}
+.cv-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--glow);
+}
+.cv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+.cv-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  padding: 8px 15px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.cv-btn-ghost:hover {
+  background: var(--panel2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cv-input {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-mono);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--tint);
+}
+.cv-select {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.cv-select:focus {
+  border-color: var(--accent);
+}
+.cv-row:hover {
+  background: var(--panel2);
+}
+.cv-x {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 15px;
+}
+.cv-x:hover {
+  color: var(--neg);
+}
+
+/* --- sistema visual: tarjetas con franja lateral (patrón tomado del manual de marca CAD) --- */
+.cv-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.cv-card-hover:hover {
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+.cv-stripe {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+.cv-eyebrow {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.cv-chain-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@keyframes cv-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cv-fade-in {
+  animation: cv-fade-in 0.25s ease both;
+}
+
+/* ============ SIDEBAR (escritorio) ============ */
+.cv-sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+.cv-nav-item {
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.cv-nav-item:hover {
+  background: var(--panel2);
+  transform: translateX(3px);
+}
+
+/* ============ MÓVIL ============ */
+
+/* Respeta las zonas seguras del iPhone (notch, barra inferior) */
+.cv-safe-bottom { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+.cv-safe-top { padding-top: env(safe-area-inset-top); }
+
+/* Barra de navegación inferior tipo app nativa */
+.cv-tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 50;
+  display: flex;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.2);
+}
+.cv-tabbar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  min-height: 54px;
+  transition: color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.cv-tabbar-item[data-active="true"] { color: var(--accent); }
+
+/* Hoja modal deslizable desde abajo (para filtros y acciones en móvil) */
+.cv-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  animation: cv-fade-in 0.18s ease both;
+}
+.cv-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 61;
+  background: var(--panel);
+  border-radius: 20px 20px 0 0;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4);
+  animation: cv-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes cv-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.cv-sheet-handle {
+  width: 38px; height: 4px; border-radius: 999px;
+  background: var(--line2); margin: 6px auto 14px;
+}
+
+@media (max-width: 767px) {
+  /* Evita el zoom automático de iOS al enfocar un campo (requiere >=16px) */
+  .cv-input, .cv-select, input, select, textarea {
+    font-size: 16px !important;
+  }
+  /* Área táctil cómoda */
+  .cv-input, .cv-select {
+    padding: 11px 13px;
+    min-height: 44px;
+  }
+  .cv-btn, .cv-btn-ghost {
+    min-height: 44px;
+    padding: 11px 18px;
+  }
+  .cv-x {
+    min-width: 40px; min-height: 40px;
+    font-size: 18px;
+  }
+  /* Las tarjetas ocupan mejor el ancho disponible */
+  .cv-card { border-radius: 14px; }
+  /* Desactiva el hover-lift en táctil (no aplica y causa saltos) */
+  .cv-card-hover:hover { transform: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16); }
+}
+
+/* Scroll horizontal con inercia para tablas que no se pueden apilar */
+.cv-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
