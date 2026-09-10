@@ -110,16 +110,17 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
             <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0, marginTop: 3 }} />
             <ChainBadge chain={wallet.chain} size={22} />
             <div className="min-w-0 flex-1">
-              {/* El saldo vive junto al nombre (no en una columna aparte a la derecha) para que en
-                  pantallas angostas baje de línea cuando no entran los dos — en vez de quedar flotando
-                  centrado verticalmente y superponerse con el nombre, que es lo que pasaba antes. */}
-              <div className="flex items-baseline justify-between gap-x-3 gap-y-0.5 flex-wrap">
-                <span className="text-[13px] font-medium truncate" style={{ color: "var(--ink)" }}>{wallet.label}</span>
-                <span className="font-mono text-[12.5px] flex-shrink-0" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>
-                  {balance.loading ? "…" : balance.error || balance.detail}
-                </span>
-              </div>
+              {/* Nombre, dirección y saldo apilados en su propia línea completa cada uno — nunca
+                  comparten una fila con los botones de lápiz/borrar (columna aparte, ancho fijo).
+                  Antes el saldo compartía línea con el nombre y, al ser un texto largo, se
+                  desbordaba por fuera de su columna y quedaba debajo de esos botones. Apilado así,
+                  el saldo tiene todo el ancho de la tarjeta para él solo y puede partirse en varias
+                  líneas si hace falta, sin invadir el espacio de nada más. */}
+              <div className="text-[13px] font-medium truncate" style={{ color: "var(--ink)" }}>{wallet.label}</div>
               <div className="font-mono text-[11px] truncate" style={{ color: "var(--faint)" }}>{wallet.address}</div>
+              <div className="font-mono text-[12px] mt-0.5" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>
+                {balance.loading ? "…" : balance.error || balance.detail}
+              </div>
             </div>
           </button>
         )}
