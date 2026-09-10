@@ -223,6 +223,10 @@ export default function TransferView({
             {plans.map((plan) => {
               const doneCount = plan.legs.filter((l: any) => l.done).length;
               const allDone = doneCount === plan.legs.length;
+              // Suma directa de los tramos pendientes: buildPlan ya exige que todos los tramos
+              // compartan la unidad de targetAsset (ver totalPlanned en ColdVault.tsx), así que
+              // no hace falta agrupar por asset — es lo mismo que targetAmount menos lo ya hecho.
+              const remaining = plan.legs.filter((l: any) => !l.done).reduce((s: number, l: any) => s + (parseFloat(l.amount) || 0), 0);
               return (
                 <div key={plan.id} className="rounded-lg p-3.5" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
                   <div className="flex items-start justify-between gap-2 mb-1">
@@ -231,6 +235,11 @@ export default function TransferView({
                         {fmtAmt(plan.targetAmount)} {plan.targetAsset} → {plan.destLabel || shortAddr(plan.destination)}
                       </div>
                       <div className="text-[11px]" style={{ color: "var(--dim)" }}>{new Date(plan.createdAt).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" })} · {plan.legs.length} tramo(s)</div>
+                      {!allDone && (
+                        <div className="text-[12px] font-semibold mt-1" style={{ color: "var(--amber)" }}>
+                          Falta transferir: {fmtAmt(remaining)} {plan.targetAsset} ({plan.legs.length - doneCount} tramo{plan.legs.length - doneCount === 1 ? "" : "s"} pendiente{plan.legs.length - doneCount === 1 ? "" : "s"})
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: allDone ? "rgba(62,213,152,.14)" : "var(--tint)", color: allDone ? "var(--pos)" : "var(--amber)" }}>

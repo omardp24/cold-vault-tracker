@@ -64,11 +64,15 @@ export default function PushBell({ size = 34 }: { size?: number }) {
     <button
       onClick={toggle}
       disabled={busy}
-      className="cv-icon-btn justify-center rounded-full flex-shrink-0"
-      style={{ width: size, height: size, background: "var(--panel2)", border: "1px solid var(--line)", color: subscribed ? "var(--accent)" : "var(--dim)" }}
-      title={subscribed ? "Desactivar notificaciones" : "Activar notificaciones"}
+      className="cv-icon-btn justify-center rounded-full flex-shrink-0 transition-colors"
+      style={
+        subscribed
+          ? { width: size, height: size, background: "var(--accent)", border: "1px solid var(--accent)", color: "#ffffff" }
+          : { width: size, height: size, background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--dim)" }
+      }
+      title={subscribed ? "Notificaciones activadas — clic para desactivar" : "Notificaciones desactivadas — clic para activar"}
     >
-      {subscribed ? <Bell size={15} /> : <BellOff size={15} />}
+      {subscribed ? <Bell size={15} fill="currentColor" /> : <BellOff size={15} />}
     </button>
   );
 }

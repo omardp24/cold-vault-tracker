@@ -1,4 +1,4 @@
-import { checkSanctioned } from "./sanctions";
+import { assessAddressRisk } from "./addressRisk";
 import { historyFetchers } from "./chains";
 import type { HistoryPage } from "./chains/types";
 import { readDb } from "./db";
@@ -51,15 +51,29 @@ export async function runDailySync(): Promise<DailySyncResult> {
         const classification = db.classifications[m.key];
         if (classification?.isFee) continue;
 
-        const sanctionCheck = m.counterparty
-          ? await checkSanctioned(m.chain, m.counterparty).catch(() => ({ sanctioned: false, lists: [] as string[], lastChecked: 0 }))
-          : { sanctioned: false, lists: [] as string[], lastChecked: 0 };
+        // Auditoría completa (sanciones OFAC + blacklist/fraude de Tronscan + "address poisoning"),
+        // no solo sanciones — el mismo núcleo que usa la auditoría manual. Así una wallet que te
+        // transfiere desde una dirección marcada como fraude/estafa en Tronscan (mucho más común
+        // en el día a día que una sanción OFAC) también dispara el aviso, no solo el caso extremo.
+        const risk = m.counterparty
+          ? await assessAddressRisk(m.chain, m.counterparty, db).catch(() => null)
+          : null;
+        const isRisky = risk?.verdict === "high_risk";
         const unclassified = !classification?.aliadoId || !classification?.concepto?.trim();
 
-        if (unclassified || sanctionCheck.sanctioned) {
+        if (unclassified || isRisky) {
+          const riskReason = risk?.sanctions.sanctioned
+            ? "está en lista OFAC"
+            : risk?.tronscanRisky
+            ? "está marcada como fraude/estafa en Tronscan"
+            : risk?.poisoningMatches.length
+            ? `se parece a ${risk.poisoningMatches[0].label}`
+            : null;
           await sendToAll({
-            title: sanctionCheck.sanctioned ? "🚫 Movimiento hacia dirección sancionada" : "Nuevo movimiento sin clasificar",
-            body: `${m.direction === "out" ? "Salida" : "Entrada"} de ${m.amount} ${m.asset} en ${w.label}`,
+            title: isRisky ? "🚫 Movimiento con contraparte riesgosa" : "Nuevo movimiento sin clasificar",
+            body: isRisky
+              ? `${m.direction === "out" ? "Salida hacia" : "Entrada desde"} una dirección que ${riskReason} — ${m.amount} ${m.asset} en ${w.label}`
+              : `${m.direction === "out" ? "Salida" : "Entrada"} de ${m.amount} ${m.asset} en ${w.label}`,
             data: { movementKey: m.key, chain: m.chain },
           });
           notified++;

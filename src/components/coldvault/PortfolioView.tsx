@@ -91,7 +91,7 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
 
   return (
     <div className="border-t" style={{ borderColor: "var(--line)" }}>
-      <div className="cv-row flex items-center justify-between py-2.5 px-1.5 rounded-md transition-colors">
+      <div className="cv-row flex items-start justify-between gap-2 py-2.5 px-1.5 rounded-md transition-colors">
         {editing ? (
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <ChainBadge chain={wallet.chain} size={22} />
@@ -106,24 +106,29 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
             <button className="cv-x" onClick={cancelEdit} title="Cancelar"><X size={13} /></button>
           </div>
         ) : (
-          <button className="flex items-center gap-2.5 min-w-0 flex-1 text-left" onClick={toggle}>
-            <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+          <button className="flex items-start gap-2.5 min-w-0 flex-1 text-left" onClick={toggle}>
+            <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0, marginTop: 3 }} />
             <ChainBadge chain={wallet.chain} size={22} />
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>{wallet.label}</div>
-              <div className="font-mono text-[11px] truncate max-w-[220px]" style={{ color: "var(--faint)" }}>{wallet.address}</div>
+            <div className="min-w-0 flex-1">
+              {/* El saldo vive junto al nombre (no en una columna aparte a la derecha) para que en
+                  pantallas angostas baje de línea cuando no entran los dos — en vez de quedar flotando
+                  centrado verticalmente y superponerse con el nombre, que es lo que pasaba antes. */}
+              <div className="flex items-baseline justify-between gap-x-3 gap-y-0.5 flex-wrap">
+                <span className="text-[13px] font-medium truncate" style={{ color: "var(--ink)" }}>{wallet.label}</span>
+                <span className="font-mono text-[12.5px] flex-shrink-0" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>
+                  {balance.loading ? "…" : balance.error || balance.detail}
+                </span>
+              </div>
+              <div className="font-mono text-[11px] truncate" style={{ color: "var(--faint)" }}>{wallet.address}</div>
             </div>
           </button>
         )}
-        <div className="flex items-center gap-2.5 flex-shrink-0">
-          {!editing && (
-            <>
-              <div className="font-mono text-[12.5px] text-right" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>{balance.loading ? "…" : balance.error || balance.detail}</div>
-              <button className="cv-x" onClick={startEdit} title="Renombrar"><Pencil size={12} /></button>
-              <button className="cv-x" onClick={onRemove}>✕</button>
-            </>
-          )}
-        </div>
+        {!editing && (
+          <div className="flex items-center gap-2.5 flex-shrink-0" style={{ marginTop: 2 }}>
+            <button className="cv-x" onClick={startEdit} title="Renombrar"><Pencil size={12} /></button>
+            <button className="cv-x" onClick={onRemove}>✕</button>
+          </div>
+        )}
       </div>
       {expanded && !editing && (
         <div className="pb-3 px-1.5">

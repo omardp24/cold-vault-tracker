@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkSanctioned } from "@/lib/sanctions";
-import { checkStablecoinBlacklist, checkAccountSecurity } from "@/lib/tronscan";
+import { assessAddressRisk } from "@/lib/addressRisk";
 import { balanceFetchers, historyFetchers } from "@/lib/chains";
 import { readDb, Chain } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-
-function fingerprint(addr: string): string {
-  return addr.length >= 12 ? `${addr.slice(0, 6).toLowerCase()}…${addr.slice(-4).toLowerCase()}` : addr.toLowerCase();
-}
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(); if (!auth.ok) return auth.res as any;
@@ -15,13 +10,8 @@ export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
   if (!chain || !address) return NextResponse.json({ error: "chain y address son requeridos" }, { status: 400 });
 
-  const sanctions = await checkSanctioned(chain, address);
-
-  let tronscanBlacklist: { blacklisted: boolean; tokens: string[] } | null = null;
-  let tronscanSecurity: { checked: boolean; hasFraudTransaction?: boolean; fraudTokenCreator?: boolean; sendAdByMemo?: boolean; isBlackList?: boolean } | null = null;
-  if (chain === "TRON") {
-    [tronscanBlacklist, tronscanSecurity] = await Promise.all([checkStablecoinBlacklist(address), checkAccountSecurity(address)]);
-  }
+  const db = await readDb();
+  const risk = await assessAddressRisk(chain, address, db);
 
   let txSeen = 0;
   let hasMoreHistory = false;
@@ -47,31 +37,19 @@ export async function GET(req: NextRequest) {
     balanceError = e.message || "no se pudo leer el saldo";
   }
 
-  const db = await readDb();
-  const known = [
-    ...db.wallets.map((w) => ({ address: w.address, label: `tu wallet "${w.label}"` })),
-    ...db.aliados.flatMap((a) => a.addresses.map((ad) => ({ address: ad.address, label: `tu aliado "${a.name}"` }))),
-  ];
-  const targetFp = fingerprint(address);
-  const poisoningMatches = known
-    .filter((k) => k.address.toLowerCase() !== address.toLowerCase() && fingerprint(k.address) === targetFp)
-    .map((k) => ({ address: k.address, label: k.label }));
-
-  let verdict: "clean" | "caution" | "high_risk" = "clean";
-  const tronscanRisky =
-    !!tronscanBlacklist?.blacklisted ||
-    !!(tronscanSecurity?.checked && (tronscanSecurity.hasFraudTransaction || tronscanSecurity.fraudTokenCreator || tronscanSecurity.isBlackList));
-  if (sanctions.sanctioned || poisoningMatches.length > 0 || tronscanRisky) verdict = "high_risk";
-  else if (txSeen === 0 && balanceSummary.length === 0) verdict = "caution";
+  // El verdict de assessAddressRisk ya cubre sanciones/tronscan/poisoning ("high_risk"); acá solo
+  // se agrega el caso "caution" que depende de historial y saldo, datos que el núcleo compartido
+  // no consulta (lo hace más liviano para el cron diario, que lo llama por cada movimiento nuevo).
+  const verdict = risk.verdict === "high_risk" ? "high_risk" : txSeen === 0 && balanceSummary.length === 0 ? "caution" : "clean";
 
   return NextResponse.json({
     chain, address,
-    sanctions,
-    tronscanBlacklist,
-    tronscanSecurity,
+    sanctions: risk.sanctions,
+    tronscanBlacklist: risk.tronscanBlacklist,
+    tronscanSecurity: risk.tronscanSecurity,
     activity: { txSeen, hasMoreHistory, oldestSeen, newestSeen, historyError },
     balance: { summary: balanceSummary, error: balanceError },
-    poisoningMatches,
+    poisoningMatches: risk.poisoningMatches,
     verdict,
   });
 }
