@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
-import { ChevronRight, Download, Plus, RefreshCw, Sparkles, Wallet as WalletIcon } from "lucide-react";
+import { Check, ChevronRight, Download, Pencil, Plus, RefreshCw, Sparkles, Wallet as WalletIcon, X } from "lucide-react";
 import {
   CHAIN_COLORS, CHAIN_LABEL, ChainBadge, Chain, Holding, ManualHolding, ValueCounter, Wallet,
   fmtAmt, fmtUSD,
@@ -33,6 +33,7 @@ export interface PortfolioViewProps {
   addWalletError: string;
   balances: Record<string, BalanceEntry>;
   removeWallet: (id: string) => void;
+  renameWallet: (id: string, label: string) => void;
   manual: ManualHolding[];
   manualCoinId: string;
   setManualCoinId: Dispatch<SetStateAction<string>>;
@@ -57,11 +58,13 @@ export interface PortfolioViewProps {
   vesRates: { bcv: number | null; paralelo: number | null };
 }
 
-function WalletRow({ wallet, balance, onRemove }: { wallet: Wallet; balance: BalanceEntry; onRemove: () => void }) {
+function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; balance: BalanceEntry; onRemove: () => void; onRename: (label: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [history, setHistory] = useState<PortfolioHistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(wallet.label);
 
   const toggle = async () => {
     const next = !expanded;
@@ -78,23 +81,51 @@ function WalletRow({ wallet, balance, onRemove }: { wallet: Wallet; balance: Bal
     }
   };
 
+  const startEdit = () => { setEditValue(wallet.label); setEditing(true); };
+  const confirmEdit = () => {
+    const clean = editValue.trim();
+    if (clean && clean !== wallet.label) onRename(clean);
+    setEditing(false);
+  };
+  const cancelEdit = () => { setEditValue(wallet.label); setEditing(false); };
+
   return (
     <div className="border-t" style={{ borderColor: "var(--line)" }}>
       <div className="cv-row flex items-center justify-between py-2.5 px-1.5 rounded-md transition-colors">
-        <button className="flex items-center gap-2.5 min-w-0 flex-1 text-left" onClick={toggle}>
-          <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
-          <ChainBadge chain={wallet.chain} size={22} />
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>{wallet.label}</div>
-            <div className="font-mono text-[11px] truncate max-w-[220px]" style={{ color: "var(--faint)" }}>{wallet.address}</div>
+        {editing ? (
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <ChainBadge chain={wallet.chain} size={22} />
+            <input
+              autoFocus
+              className="cv-input flex-1 min-w-0 text-[13px] py-1"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") cancelEdit(); }}
+            />
+            <button className="cv-x" onClick={confirmEdit} title="Guardar"><Check size={13} /></button>
+            <button className="cv-x" onClick={cancelEdit} title="Cancelar"><X size={13} /></button>
           </div>
-        </button>
+        ) : (
+          <button className="flex items-center gap-2.5 min-w-0 flex-1 text-left" onClick={toggle}>
+            <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+            <ChainBadge chain={wallet.chain} size={22} />
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>{wallet.label}</div>
+              <div className="font-mono text-[11px] truncate max-w-[220px]" style={{ color: "var(--faint)" }}>{wallet.address}</div>
+            </div>
+          </button>
+        )}
         <div className="flex items-center gap-2.5 flex-shrink-0">
-          <div className="font-mono text-[12.5px] text-right" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>{balance.loading ? "…" : balance.error || balance.detail}</div>
-          <button className="cv-x" onClick={onRemove}>✕</button>
+          {!editing && (
+            <>
+              <div className="font-mono text-[12.5px] text-right" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>{balance.loading ? "…" : balance.error || balance.detail}</div>
+              <button className="cv-x" onClick={startEdit} title="Renombrar"><Pencil size={12} /></button>
+              <button className="cv-x" onClick={onRemove}>✕</button>
+            </>
+          )}
         </div>
       </div>
-      {expanded && (
+      {expanded && !editing && (
         <div className="pb-3 px-1.5">
           <EvolutionChart history={history} loading={loading} />
         </div>
@@ -105,7 +136,7 @@ function WalletRow({ wallet, balance, onRemove }: { wallet: Wallet; balance: Bal
 
 export default function PortfolioView({
   total, wallets, fetchAll, refreshing, autoRefresh, setAutoRefresh, lastUpdated, incompleteWallets, errMsg,
-  chain, setChain, labelInput, setLabelInput, addrInput, setAddrInput, addWallet, addWalletError, balances, removeWallet,
+  chain, setChain, labelInput, setLabelInput, addrInput, setAddrInput, addWallet, addWalletError, balances, removeWallet, renameWallet,
   manual, manualCoinId, setManualCoinId, manualSymbol, setManualSymbol, manualQty, setManualQty, addManual, removeManual,
   pieData, holdings, colorForSymbol, loadMarket, marketLoading, marketError, marketTop, gasNow,
   history, historyLoading, historyRange, setHistoryRange, vesRates,
@@ -204,7 +235,7 @@ export default function PortfolioView({
           {wallets.length === 0 && <div className="text-[12.5px] py-2" style={{ color: "var(--dim)" }}>Copia la dirección pública desde Ledger Live (nunca la clave privada).</div>}
           {wallets.map((w) => {
             const b = balances[w.id] || { loading: true, error: null, detail: null };
-            return <WalletRow key={w.id} wallet={w} balance={b} onRemove={() => removeWallet(w.id)} />;
+            return <WalletRow key={w.id} wallet={w} balance={b} onRemove={() => removeWallet(w.id)} onRename={(label) => renameWallet(w.id, label)} />;
           })}
           <div className="mt-4 pt-3.5 border-t border-dashed" style={{ borderColor: "var(--line)" }}>
             <div className="font-display text-[13px] font-semibold mb-2.5">Otro activo (manual)</div>

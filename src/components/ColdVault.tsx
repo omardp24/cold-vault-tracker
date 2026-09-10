@@ -251,6 +251,17 @@ export default function ColdVault() {
     setBalances((b) => { const c = { ...b }; delete c[id]; return c; });
     setMovements((m) => m.filter((x) => (x as any).walletId !== id));
   };
+  const renameWallet = async (id: string, label: string) => {
+    const clean = label.trim();
+    if (!clean) return;
+    const res = await fetch(`/api/wallets/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: clean }),
+    });
+    const updated = await res.json();
+    if (!res.ok) { alert(updated.error || "No se pudo renombrar la wallet."); return; }
+    setWallets((w) => w.map((x) => (x.id === id ? updated : x)));
+  };
   const addManual = async () => {
     if (!manualCoinId.trim() || !manualQty || isNaN(parseFloat(manualQty))) return;
     const res = await fetch("/api/manual", {
@@ -1076,7 +1087,7 @@ export default function ColdVault() {
             incompleteWallets={incompleteWallets} errMsg={errMsg}
             chain={chain} setChain={setChain} labelInput={labelInput} setLabelInput={setLabelInput}
             addrInput={addrInput} setAddrInput={setAddrInput} addWallet={addWallet} addWalletError={addWalletError}
-            balances={balances} removeWallet={removeWallet}
+            balances={balances} removeWallet={removeWallet} renameWallet={renameWallet}
             manual={manual} manualCoinId={manualCoinId} setManualCoinId={setManualCoinId}
             manualSymbol={manualSymbol} setManualSymbol={setManualSymbol} manualQty={manualQty} setManualQty={setManualQty}
             addManual={addManual} removeManual={removeManual}
