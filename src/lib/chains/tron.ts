@@ -10,8 +10,25 @@ function headers(): Record<string, string> {
   return key ? { "TRON-PRO-API-KEY": key } : {};
 }
 
+// Sin TRONGRID_KEY, el límite anónimo de TronGrid es bajo y se agota rápido si varias wallets
+// se consultan casi al mismo tiempo (429 Too Many Requests). Reintenta con backoff exponencial +
+// jitter (para que wallets que fallaron juntas no vuelvan a chocar en el mismo instante) antes de
+// rendirse — normalmente el límite se libera en 1-2 segundos.
+async function tronFetch(url: string): Promise<Response> {
+  const maxAttempts = 4;
+  let res: Response;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    res = await fetch(url, { headers: headers(), cache: "no-store" });
+    if (res.status !== 429) return res;
+    if (attempt === maxAttempts - 1) return res;
+    const delay = 500 * Math.pow(2, attempt) + Math.random() * 250;
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return res!;
+}
+
 export async function getTronBalance(address: string): Promise<BalanceResult> {
-  const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`, { headers: headers(), cache: "no-store" });
+  const res = await tronFetch(`https://api.trongrid.io/v1/accounts/${address}`);
   if (!res.ok) throw new Error(`TronGrid HTTP ${res.status}`);
   const d = await res.json();
   if (d.success === false) throw new Error(d.error || "TronGrid: respuesta inválida");
@@ -33,7 +50,7 @@ export async function getTronHistory(address: string, cursor?: string | null): P
   url.searchParams.set("limit", "100");
   url.searchParams.set("only_confirmed", "true");
   if (cursor) url.searchParams.set("fingerprint", cursor);
-  const res = await fetch(url.toString(), { headers: headers(), cache: "no-store" });
+  const res = await tronFetch(url.toString());
   if (!res.ok) throw new Error(`TronGrid HTTP ${res.status}`);
   const d = await res.json();
   if (d.success === false) throw new Error(d.error || "TronGrid: respuesta inválida");

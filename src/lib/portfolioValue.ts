@@ -27,7 +27,7 @@ export async function computePortfolioBreakdown(): Promise<PortfolioBreakdown> {
   const globalAgg: Record<string, { symbol: string; amount: number; priceOverride?: number; coinId?: string }> = {};
   const failedWalletIds: string[] = [];
 
-  await Promise.all(db.wallets.map(async (w) => {
+  const processWallet = async (w: (typeof db.wallets)[number]) => {
     try {
       const bal = (await balanceFetchers[w.chain](w.address)) as BalanceResult;
       const items = [bal.native, ...bal.tokens];
@@ -43,7 +43,16 @@ export async function computePortfolioBreakdown(): Promise<PortfolioBreakdown> {
       walletItems.push({ walletId: w.id, items: [] });
       failedWalletIds.push(w.id);
     }
-  }));
+  };
+
+  // Las wallets de TRON se consultan en serie (no en paralelo con Promise.all como el resto):
+  // TronGrid sin API key tiene un límite anónimo bajo, y varias wallets de la misma cuenta
+  // llegando juntas lo agotan (429) aunque cada una individualmente reintente (ver tronFetch en
+  // chains/tron.ts). BTC/ETH usan otras APIs sin este problema, así que siguen en paralelo.
+  const tronWallets = db.wallets.filter((w) => w.chain === "TRON");
+  const otherWallets = db.wallets.filter((w) => w.chain !== "TRON");
+  await Promise.all(otherWallets.map(processWallet));
+  for (const w of tronWallets) await processWallet(w);
 
   db.manual.forEach((m) => {
     globalAgg[m.symbol] = globalAgg[m.symbol] || { symbol: m.symbol, amount: 0, coinId: m.coinId };
@@ -65,9 +74,9 @@ export async function computePortfolioBreakdown(): Promise<PortfolioBreakdown> {
   }
 
   const priceFor = (symbol: string, priceOverride?: number, coinId?: string) => {
-    if (FIXED_STABLECOINS.has(symbol.toUpperCase())) return 1;
     if (SYMBOL_COINGECKO[symbol] && priceMap[SYMBOL_COINGECKO[symbol]]) return priceMap[SYMBOL_COINGECKO[symbol]].usd;
     if (coinId && priceMap[coinId]) return priceMap[coinId].usd;
+    if (FIXED_STABLECOINS.has(symbol.toUpperCase())) return 1;
     if (priceOverride) return priceOverride;
     return null;
   };

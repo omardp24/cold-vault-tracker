@@ -284,7 +284,7 @@ export default function ColdVault() {
     const newBalances: typeof balances = {};
     const agg: Record<string, { symbol: string; amount: number; priceOverride?: number; coinId?: string }> = {};
 
-    await Promise.all(wallets.map(async (w) => {
+    const fetchWalletBalance = async (w: Wallet) => {
       try {
         const res = await fetch(`/api/balance?chain=${w.chain}&address=${encodeURIComponent(w.address)}`);
         const d = await res.json();
@@ -302,7 +302,13 @@ export default function ColdVault() {
       } catch (e: any) {
         newBalances[w.id] = { loading: false, error: `Error: ${e.message || "fallo desconocido"}`, detail: null };
       }
-    }));
+    };
+    // Tron en serie, no en Promise.all: TronGrid sin API key se satura (429) si varias wallets
+    // de la misma cuenta llegan juntas. BTC/ETH usan otras APIs, sin este límite, y siguen en paralelo.
+    const tronWallets = wallets.filter((w) => w.chain === "TRON");
+    const otherWallets = wallets.filter((w) => w.chain !== "TRON");
+    await Promise.all(otherWallets.map(fetchWalletBalance));
+    for (const w of tronWallets) await fetchWalletBalance(w);
 
     manual.forEach((m) => {
       agg[m.symbol] = agg[m.symbol] || { symbol: m.symbol, amount: 0, coinId: m.coinId };
@@ -324,9 +330,9 @@ export default function ColdVault() {
     }
 
     const priceFor = (a: typeof agg[string]) => {
-      if (FIXED_STABLECOINS.has(a.symbol.toUpperCase())) return 1;
       if (SYMBOL_COINGECKO[a.symbol] && priceMap[SYMBOL_COINGECKO[a.symbol]]) return priceMap[SYMBOL_COINGECKO[a.symbol]].usd;
       if (a.coinId && priceMap[a.coinId]) return priceMap[a.coinId].usd;
+      if (FIXED_STABLECOINS.has(a.symbol.toUpperCase())) return 1;
       if (a.priceOverride) return a.priceOverride;
       return null;
     };
@@ -544,12 +550,14 @@ export default function ColdVault() {
     setDiagRunning(false);
   };
 
-  // Los stablecoins tienen precio fijo aunque ya no queden en balance (por eso no dependen
-  // de priceLookup, que solo se llena con los activos que tienes actualmente).
+  // Se prioriza el precio en vivo (priceLookup, que ya viene valorado a precio de mercado real —
+  // ver FIXED_STABLECOINS en assets.ts). El $1 fijo es solo respaldo para stablecoins que ya no
+  // están en balance actual y por eso no tienen entrada en priceLookup.
   const safePrice = (m: Movement) => {
     if (!m.verified) return null;
+    if (priceLookup[m.asset] != null) return priceLookup[m.asset];
     if (FIXED_STABLECOINS.has(m.asset.toUpperCase())) return 1;
-    return priceLookup[m.asset];
+    return null;
   };
 
   // Detección de "address poisoning": direcciones distintas que comparten los mismos
@@ -786,8 +794,9 @@ export default function ColdVault() {
   };
 
   const assetUsdPrice = (asset: string): number | null => {
+    if (priceLookup[asset] != null) return priceLookup[asset];
     if (FIXED_STABLECOINS.has(asset.toUpperCase())) return 1;
-    return priceLookup[asset] ?? null;
+    return null;
   };
   const groupUsdApprox = (g: (typeof pendingGroups)[number]) =>
     Object.entries(g.totals).reduce((s, [asset, amt]) => { const p = assetUsdPrice(asset); return s + (p ? p * amt : 0); }, 0);

@@ -38,12 +38,13 @@ export function isInternalTransfer(m: Movement, wallets: Wallet[]): boolean {
 export function nameFor(id: string, aliados: Aliado[]): string {
   return id === "sin_clasificar" ? "Sin clasificar" : aliados.find((a) => a.id === id)?.name || "—";
 }
-// Los stablecoins tienen precio fijo aunque no haya lookup de mercado (mismo criterio que
-// safePrice() en ColdVault.tsx).
+// Se prioriza el precio en vivo del lookup (ya valorado a precio de mercado real); el $1 fijo
+// es solo respaldo cuando no hay lookup para ese activo (mismo criterio que safePrice() en ColdVault.tsx).
 export function safePrice(m: Movement, priceLookup: Record<string, number | null>): number | null {
   if (!m.verified) return null;
+  if (priceLookup[m.asset] != null) return priceLookup[m.asset];
   if (FIXED_STABLECOINS.has(m.asset.toUpperCase())) return 1;
-  return priceLookup[m.asset] ?? null;
+  return null;
 }
 
 export interface StatementAggregationInput {
