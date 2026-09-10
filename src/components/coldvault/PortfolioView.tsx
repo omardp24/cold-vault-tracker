@@ -9,7 +9,6 @@ import {
 } from "./shared";
 import EvolutionChart, { PortfolioHistoryPoint, HistoryRange } from "./EvolutionChart";
 
-interface MarketCoin { id: string; symbol: string; name: string; image: string; price: number; change24h: number; }
 interface GasNow { btc: any; eth: any; tron: any; }
 type BalanceEntry = { loading: boolean; error: string | null; detail: string | null };
 
@@ -46,10 +45,8 @@ export interface PortfolioViewProps {
   pieData: { name: string; value: number }[];
   holdings: Holding[];
   colorForSymbol: Record<string, string>;
-  loadMarket: () => void;
-  marketLoading: boolean;
-  marketError: string;
-  marketTop: MarketCoin[];
+  loadGasFees: () => void;
+  gasLoading: boolean;
   gasNow: GasNow;
   history: PortfolioHistoryPoint[];
   historyLoading: boolean;
@@ -144,7 +141,7 @@ export default function PortfolioView({
   total, wallets, fetchAll, refreshing, autoRefresh, setAutoRefresh, lastUpdated, incompleteWallets, errMsg,
   chain, setChain, labelInput, setLabelInput, addrInput, setAddrInput, addWallet, addWalletError, balances, removeWallet, renameWallet,
   manual, manualCoinId, setManualCoinId, manualSymbol, setManualSymbol, manualQty, setManualQty, addManual, removeManual,
-  pieData, holdings, colorForSymbol, loadMarket, marketLoading, marketError, marketTop, gasNow,
+  pieData, holdings, colorForSymbol, loadGasFees, gasLoading, gasNow,
   history, historyLoading, historyRange, setHistoryRange, vesRates,
 }: PortfolioViewProps) {
   return (
@@ -382,13 +379,13 @@ export default function PortfolioView({
         )}
       </div>
 
-      {/* Mercado y comisiones — solo móvil (en escritorio van en el sidebar) */}
-      <div className="md:hidden mt-4 space-y-4">
+      {/* Comisiones de red — solo móvil (en escritorio va en el sidebar) */}
+      <div className="md:hidden mt-4">
         <div className="cv-card p-4">
           <div className="flex items-center justify-between mb-2.5">
             <div className="font-display text-sm font-semibold">Comisiones de red ahora</div>
-            <button onClick={loadMarket} disabled={marketLoading} style={{ background: "none", border: "none", color: "var(--accent)" }}>
-              <RefreshCw size={14} className={marketLoading ? "animate-spin" : ""} />
+            <button onClick={loadGasFees} disabled={gasLoading} style={{ background: "none", border: "none", color: "var(--accent)" }}>
+              <RefreshCw size={14} className={gasLoading ? "animate-spin" : ""} />
             </button>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -405,32 +402,6 @@ export default function PortfolioView({
               <div className="font-mono text-[12px] font-bold mt-0.5" style={{ color: "var(--ink)" }}>{gasNow.tron?.levels ? `${fmtAmt(gasNow.tron.levels[1]?.fee, 2)} TRX` : "—"}</div>
             </div>
           </div>
-        </div>
-
-        <div className="cv-card p-4">
-          <div className="font-display text-sm font-semibold mb-2.5">Top 20 cripto</div>
-          {marketError ? (
-            <div className="text-[12px]" style={{ color: "var(--dim)" }}>{marketError}</div>
-          ) : marketTop.length === 0 ? (
-            <div className="text-[12px]" style={{ color: "var(--dim)" }}>{marketLoading ? "Cargando…" : "Sin datos."}</div>
-          ) : (
-            <div className="space-y-2">
-              {marketTop.map((mc) => (
-                <div key={mc.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <img src={mc.image} alt="" className="w-5 h-5 rounded-full" />
-                    <span className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>{mc.symbol}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-[13px]" style={{ color: "var(--ink)" }}>{fmtUSD(mc.price)}</span>
-                    <span className="font-mono text-[12px] w-14 text-right font-semibold" style={{ color: mc.change24h >= 0 ? "var(--pos)" : "var(--neg)" }}>
-                      {mc.change24h >= 0 ? "▲" : "▼"}{Math.abs(mc.change24h).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </>

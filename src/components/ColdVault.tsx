@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Send, Sun, Users, Wallet as WalletIcon } from "lucide-react";
+import { ArrowLeftRight, LineChart, LogOut, Moon, ShieldCheck, Send, Sun, Users, Wallet as WalletIcon } from "lucide-react";
 import {
   Aliado, Chain, Classification, Holding, ManualHolding, Movement, Wallet,
   CHAIN_COLORS, CHAIN_LABEL, FIXED_STABLECOINS, SYMBOL_COINGECKO,
@@ -15,9 +15,10 @@ import PortfolioView from "./coldvault/PortfolioView";
 import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart";
 import MovementsView from "./coldvault/MovementsView";
 import TransferView, { XferLeg } from "./coldvault/TransferView";
+import MarketView from "./coldvault/MarketView";
 
 export default function ColdVault() {
-  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "users">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "market" | "users">("portfolio");
   const [loaded, setLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string; role: "owner" | "member" } | null>(null);
 
@@ -881,34 +882,27 @@ export default function ColdVault() {
   const pieData = pricedHoldings.map((h) => ({ name: h.symbol, value: h.value as number }));
 
   // --- ticker de mercado (top 20) + comisiones de red en vivo ---
-  const [marketTop, setMarketTop] = useState<{ id: string; symbol: string; name: string; image: string; price: number; change24h: number }[]>([]);
-  const [marketLoading, setMarketLoading] = useState(false);
-  const [marketError, setMarketError] = useState("");
+  const [gasLoading, setGasLoading] = useState(false);
   const [gasNow, setGasNow] = useState<{ btc: any; eth: any; tron: any }>({ btc: null, eth: null, tron: null });
 
-  const loadMarket = useCallback(async () => {
-    setMarketLoading(true); setMarketError("");
+  const loadGasFees = useCallback(async () => {
+    setGasLoading(true);
     try {
-      const [mRes, btcRes, ethRes, tronRes] = await Promise.all([
-        fetch("/api/market/top"),
+      const [btcRes, ethRes, tronRes] = await Promise.all([
         fetch("/api/fees?chain=BTC"),
         fetch("/api/fees?chain=ETH&isToken=false"),
         fetch("/api/fees?chain=TRON&isToken=false"),
       ]);
-      const m = await mRes.json();
-      if (mRes.ok) setMarketTop(m); else setMarketError(m.error || "no se pudo cargar el mercado");
       const [btc, eth, tron] = await Promise.all([btcRes.json(), ethRes.json(), tronRes.json()]);
       setGasNow({ btc: btcRes.ok ? btc : null, eth: ethRes.ok ? eth : null, tron: tronRes.ok ? tron : null });
-    } catch (e: any) {
-      setMarketError(e.message || "no se pudo cargar el mercado");
-    }
-    setMarketLoading(false);
+    } catch { /* la tarjeta de comisiones simplemente muestra "—" */ }
+    setGasLoading(false);
   }, []);
 
   useEffect(() => {
     if (!loaded) return;
-    loadMarket();
-    const id = setInterval(loadMarket, 60000);
+    loadGasFees();
+    const id = setInterval(loadGasFees, 60000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
@@ -945,12 +939,13 @@ export default function ColdVault() {
 
   const { theme, toggleTheme } = useTheme();
 
-  type TabId = "portfolio" | "movements" | "audit" | "transfer" | "users";
+  type TabId = "portfolio" | "movements" | "audit" | "transfer" | "market" | "users";
   const NAV_ITEMS: { id: TabId; label: string; Icon: any; badge?: number }[] = [
     { id: "portfolio", label: "Portafolio", Icon: WalletIcon },
     { id: "movements", label: "Movimientos", Icon: ArrowLeftRight, badge: pendingCount || undefined },
     { id: "audit", label: "Auditoría", Icon: ShieldCheck },
     { id: "transfer", label: "Transferir", Icon: Send },
+    { id: "market", label: "Mercado", Icon: LineChart },
     ...(currentUser?.role === "owner" ? [{ id: "users" as const, label: "Usuarios", Icon: Users }] : []),
   ];
   const SidebarNavBtn = ({ id, label, Icon, badge }: { id: TabId; label: string; Icon: any; badge?: number }) => {
@@ -1101,7 +1096,7 @@ export default function ColdVault() {
             manualSymbol={manualSymbol} setManualSymbol={setManualSymbol} manualQty={manualQty} setManualQty={setManualQty}
             addManual={addManual} removeManual={removeManual}
             pieData={pieData} holdings={holdings} colorForSymbol={colorForSymbol}
-            loadMarket={loadMarket} marketLoading={marketLoading} marketError={marketError} marketTop={marketTop} gasNow={gasNow}
+            loadGasFees={loadGasFees} gasLoading={gasLoading} gasNow={gasNow}
             history={history} historyLoading={historyLoading} historyRange={historyRange} setHistoryRange={setHistoryRange}
             vesRates={vesRates}
           />
@@ -1149,6 +1144,7 @@ export default function ColdVault() {
 
 
         {tab === "audit" && <AuditTab />}
+        {tab === "market" && <MarketView />}
 
         {tab === "transfer" && (
           <TransferView
