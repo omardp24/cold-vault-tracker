@@ -16,6 +16,7 @@ import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart"
 import MovementsView from "./coldvault/MovementsView";
 import TransferView, { XferLeg } from "./coldvault/TransferView";
 import MarketView from "./coldvault/MarketView";
+import { buildStatementData } from "@/lib/statementAggregation";
 
 export default function ColdVault() {
   const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "market" | "users">("portfolio");
@@ -648,23 +649,15 @@ export default function ColdVault() {
     downloadCsv(`movimientos_${name.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`, movementsToCsv(rows));
 
   const [statementGenerating, setStatementGenerating] = useState<"pdf" | "excel" | null>(null);
-  const buildStatementInput = () => ({
+  // buildStatementData (statementAggregation.ts) es la misma función que usa el reporte mensual
+  // automático server-side — se reusa acá para que el export manual y el correo mensual nunca
+  // diverjan en cómo arman el estado de cuenta (antes esto era lógica duplicada e independiente).
+  const buildStatementInput = () => buildStatementData({
+    wallets, aliados, classifications, movements: filteredMovements, priceLookup,
+    holdings, total, incompleteWallets,
     generatedBy: currentUser?.name || "—",
-    generatedAt: Date.now(),
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-    incompleteWallets,
-    flowSummary,
-    totalPortfolioValue: total,
-    holdings: holdings.map((h) => ({ symbol: h.symbol, amount: h.amount, price: h.price, value: h.value })),
-    movements: filteredMovements.map((m) => ({
-      date: m.date, walletLabel: m.walletLabel || "", chain: m.chain, direction: m.direction,
-      asset: m.asset, amount: m.amount, counterparty: m.counterparty,
-      aliado: isInternalTransfer(m) ? "Transferencia interna" : effectiveIsFee(m) ? "Comisión de red" : nameFor(effectiveAliadoId(m) || "sin_clasificar"),
-      concepto: effectiveConcepto(m),
-    })),
-    aliadoOut: summaryRows.map((r) => ({ name: nameFor(r.id), assets: Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · "), usdApprox: r.usdApprox })),
-    aliadoIn: summaryRowsIn.map((r) => ({ name: nameFor(r.id), assets: Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · "), usdApprox: r.usdApprox })),
   });
 
   const generateStatement = async (format: "pdf" | "excel") => {
