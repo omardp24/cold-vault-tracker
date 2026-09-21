@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
-  ArrowLeftRight, ChevronRight, CircleCheck, Clock, Download, Plus, Search, Sparkles, Users as UsersIcon, X,
+  ArrowLeftRight, ChevronRight, CircleCheck, Clock, Download, Plus, Search, SlidersHorizontal, Sparkles, Users as UsersIcon, X,
 } from "lucide-react";
 import {
   Aliado, CHAIN_LABEL, ChainBadge, Chain, Movement, Wallet,
@@ -14,6 +14,20 @@ type DirFilter = "all" | "in" | "out";
 type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee" | "suspicious";
 type GroupViewMode = "pending" | "all";
 type GroupBatchEntry = { aliadoId: string; concepto: string; applying: boolean };
+
+// En escritorio el contenido se ve siempre; en el teléfono se pliega bajo un resumen de una línea
+// para que los avisos largos no empujen la lista de movimientos fuera de la pantalla.
+function MobileFold({ summary, children, className = "", style }: { summary: ReactNode; children: ReactNode; className?: string; style?: CSSProperties }) {
+  return (
+    <>
+      <div className={`hidden md:block ${className}`} style={style}>{children}</div>
+      <details className={`md:hidden ${className}`} style={style}>
+        <summary className="cursor-pointer list-none font-semibold" style={{ listStyle: "none" }}>{summary} <span style={{ color: "var(--faint)", fontWeight: 400 }}>· ver más</span></summary>
+        <div className="mt-2">{children}</div>
+      </details>
+    </>
+  );
+}
 
 export interface MovementsViewProps {
   wallets: Wallet[];
@@ -147,6 +161,9 @@ export default function MovementsView(props: MovementsViewProps) {
   // solo precarga el campo de texto, el usuario confirma con el flujo normal (blur → saveClassification).
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, { concepto: string; aliadoSugerido?: string }>>({});
   const [suggesting, setSuggesting] = useState<string | null>(null);
+  // Móvil: los movimientos ya clasificados se muestran en una línea; se abren con «Editar».
+  const [openCards, setOpenCards] = useState<Set<string>>(new Set());
+  const toggleCard = (id: string) => setOpenCards((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const suggestForMovement = async (m: Movement) => {
     setSuggesting(m.key);
     try {
@@ -173,29 +190,31 @@ export default function MovementsView(props: MovementsViewProps) {
 
   return (
     <>
-      <div className="cv-card cv-card-hover p-5 mb-4">
+      {/* En el teléfono lo primero es la lista de movimientos; los resúmenes por aliado van después (order-*). */}
+      <div className="flex flex-col">
+      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-3 sm:mb-4 order-1">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 mb-1.5">
           <div className="flex items-center gap-2"><ArrowLeftRight size={16} strokeWidth={2.25} style={{ color: "var(--ink)" }} /><div className="font-display text-sm font-semibold">Movimientos</div></div>
           <button className="cv-btn w-full sm:w-auto" onClick={loadMovements} disabled={movLoading || wallets.length === 0}>
             {movLoading ? "Cargando…" : "Cargar / actualizar movimientos"}
           </button>
         </div>
-        <div className="text-[11.5px] mb-1" style={{ color: "var(--dim)" }}>
+        <MobileFold summary="ℹ Cómo se leen los movimientos" className="text-[11.5px] mb-1" style={{ color: "var(--dim)" }}>
           BTC: se toma la dirección de destino de mayor valor como contraparte (puede haber más de una salida por transacción). ETH: origen/destino directo, incluye tokens ERC-20. TRON: por ahora solo movimientos TRC-20 (USDT/USDC).
-        </div>
+        </MobileFold>
         {movErr && <div className="text-xs" style={{ color: "var(--neg)" }}>{movErr}</div>}
         {wallets.length === 0 && <div className="text-[12.5px]" style={{ color: "var(--dim)" }}>Añade al menos una dirección en la pestaña Portafolio primero.</div>}
 
         {(movements.some((m) => !m.verified) || movements.some((m) => isPoisoningSuspect(m.counterparty))) && (
-          <div className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "var(--tint)", border: "1px solid var(--amber)", color: "var(--ink)" }}>
+          <MobileFold summary="⚠ Tokens no verificados o direcciones parecidas" className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "var(--tint)", border: "1px solid var(--amber)", color: "var(--ink)" }}>
             ⚠ Se detectaron movimientos con <strong>tokens no verificados</strong> y/o <strong>direcciones muy similares a otras que has usado</strong> — señales típicas de intentos de estafa (address poisoning / tokens falsos). No cuentan en tus totales en USD, pero revísalos en la tabla de abajo y verifica cualquier transacción sospechosa directamente en el explorador antes de confiar en ella. Nunca copies una dirección de destino desde aquí sin comparar el texto completo.
-          </div>
+          </MobileFold>
         )}
 
         {movements.some((m) => quickAuditFor(m)?.sanctioned || quickAuditFor(m)?.blacklisted) && (
-          <div className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "rgba(255,107,90,.14)", border: "1px solid var(--neg)", color: "var(--ink)" }}>
+          <MobileFold summary="🚫 Contraparte sancionada o en lista negra" className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "rgba(255,107,90,.14)", border: "1px solid var(--neg)", color: "var(--ink)" }}>
             🚫 Al menos una contraparte en tu historial está en la <strong>lista de sanciones OFAC</strong> o en una <strong>lista negra de stablecoins</strong>. Búscala en la tabla (marcada en rojo) y revisa esa transacción con cuidado — considera consultar asesoría legal si corresponde a montos relevantes.
-          </div>
+          </MobileFold>
         )}
 
         {wallets.some((w) => cursors[w.id]) && (
@@ -227,27 +246,27 @@ export default function MovementsView(props: MovementsViewProps) {
       </div>
 
       {wallets.length > 0 && (
-        <div className="cv-card cv-card-hover p-5 mb-4">
+        <div className="cv-card cv-card-hover p-4 sm:p-5 mb-3 sm:mb-4 order-2">
           <div className="font-display text-sm font-semibold mb-2.5">Movimientos por wallet</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="flex sm:grid sm:grid-cols-2 gap-2.5 overflow-x-auto sm:overflow-visible snap-x -mx-1 px-1 pb-1 sm:pb-0 sm:mx-0 sm:px-0">
             {walletSummary.map((ws) => (
               <button
                 key={ws.wallet.id}
                 onClick={() => setWalletFilter(walletFilter === ws.wallet.id ? "all" : ws.wallet.id)}
-                className="text-left rounded-lg p-3 transition-colors"
+                className="text-left rounded-lg p-3 transition-colors flex-shrink-0 w-[224px] sm:w-auto snap-start"
                 style={{
                   background: walletFilter === ws.wallet.id ? "rgba(62,213,152,.14)" : "var(--panel2)",
                   border: `1px solid ${walletFilter === ws.wallet.id ? "var(--pos)" : "var(--line)"}`,
                   cursor: "pointer",
                 }}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium">{ws.wallet.label} <span className="text-[10.5px]" style={{ color: "var(--dim)" }}>· {ws.wallet.chain}</span></span>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="min-w-0 truncate text-sm font-medium">{ws.wallet.label} <span className="text-[10.5px]" style={{ color: "var(--dim)" }}>· {ws.wallet.chain}</span></span>
                   {ws.pending > 0 && (
                     <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--tint)", color: "var(--amber)" }}>⏳ {ws.pending}</span>
                   )}
                 </div>
-                <div className="text-[11.5px]" style={{ color: "var(--dim)" }}>{ws.count} movimiento{ws.count !== 1 ? "s" : ""}{ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}</div>
+                <div className="truncate text-[11.5px]" style={{ color: "var(--dim)" }}>{ws.count} movimiento{ws.count !== 1 ? "s" : ""}{ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}</div>
                 <div className="flex gap-3 text-[11.5px] font-mono mt-1">
                   <span style={{ color: "var(--pos)" }}>+{fmtUSD(ws.inUsd)}</span>
                   <span style={{ color: "var(--neg)" }}>−{fmtUSD(ws.outUsd)}</span>
@@ -261,7 +280,7 @@ export default function MovementsView(props: MovementsViewProps) {
         </div>
       )}
 
-      <div className="cv-card cv-card-hover p-5 mb-4">
+      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-4 order-4 md:order-3">
         <div className="flex items-center gap-2 mb-2.5"><UsersIcon size={16} strokeWidth={2.25} style={{ color: "var(--ink)" }} /><div className="font-display text-sm font-semibold">Aliados</div></div>
         <div className="flex flex-col sm:flex-row gap-2 mb-2.5">
           <input className="cv-input w-full sm:flex-1 sm:max-w-[260px]" placeholder="Nombre del aliado (ej. Proveedor Insumos)" value={newAliadoName} onChange={(e) => setNewAliadoName(e.target.value)} />
@@ -393,7 +412,7 @@ export default function MovementsView(props: MovementsViewProps) {
       </div>
 
       {(movements.some((m) => m.direction === "out") || movements.some((m) => m.direction === "in")) && (
-        <div className={`grid grid-cols-1 gap-4 mb-4 ${summaryRows.length > 0 && summaryRowsIn.length > 0 ? "sm:grid-cols-2" : ""}`}>
+        <div className={`grid grid-cols-1 gap-4 mb-4 order-5 md:order-4 ${summaryRows.length > 0 && summaryRowsIn.length > 0 ? "sm:grid-cols-2" : ""}`}>
           {summaryRows.length > 0 && (
             <div className="cv-card cv-card-hover p-5">
               <div className="font-display text-sm font-semibold mb-1">Gasto por aliado</div>
@@ -477,7 +496,7 @@ export default function MovementsView(props: MovementsViewProps) {
         </div>
       )}
 
-      <div className="cv-card cv-card-hover p-4 sm:p-5">
+      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-4 order-3 md:order-5">
         {/* ---- Barra de acciones MÓVIL ---- */}
         <div className="md:hidden mb-3">
           <div className="flex gap-2 mb-2.5">
@@ -490,7 +509,7 @@ export default function MovementsView(props: MovementsViewProps) {
               style={activeFilterCount > 0 ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
               onClick={() => setShowFilterSheet(true)}
             >
-              <Search size={14} /> Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              <SlidersHorizontal size={14} /> Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
             </button>
             <button className="cv-btn-ghost cv-icon-btn flex-shrink-0" onClick={() => setShowExportSheet(true)}>
               <Download size={14} />
@@ -740,8 +759,10 @@ export default function MovementsView(props: MovementsViewProps) {
                 const curAliado = effectiveAliadoId(m);
                 const qa = quickAuditFor(m);
                 const pending = isPending(m);
+                const cardId = `${m.key}:${(m as any).walletId}`;
+                const editing = pending || openCards.has(cardId);
                 return (
-                  <div key={`${m.key}:${(m as any).walletId}`} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
+                  <div key={cardId} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="flex items-center gap-1.5 text-[11px] min-w-0" style={{ color: "var(--dim)" }}>
                         <ChainBadge chain={m.chain} size={16} />
@@ -785,6 +806,14 @@ export default function MovementsView(props: MovementsViewProps) {
                         💳 Comisión de red
                         <button className="cv-x" onClick={() => saveClassification(m.key, { isFee: false })}>✕</button>
                       </div>
+                    ) : !editing ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--panel2)" }}>
+                        <div className="min-w-0 text-[12.5px]">
+                          <span className="font-semibold">{aliados.find((a) => a.id === curAliado)?.name || "—"}</span>
+                          {effectiveConcepto(m).trim() && <span style={{ color: "var(--dim)" }}> · {effectiveConcepto(m)}</span>}
+                        </div>
+                        <button className="cv-btn-ghost flex-shrink-0 px-3 py-1 text-[11px]" onClick={() => toggleCard(cardId)}>Editar</button>
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-1.5">
                         <div className="flex gap-1.5">
@@ -810,7 +839,10 @@ export default function MovementsView(props: MovementsViewProps) {
                           {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                           <option value="__new__">+ Nuevo aliado…</option>
                         </select>
-                        <button className="cv-btn-ghost text-[10.5px] self-start" onClick={() => saveClassification(m.key, { isFee: true })}>💳 Marcar como comisión de red</button>
+                        <div className="flex items-center justify-between gap-2">
+                          <button className="cv-btn-ghost text-[10.5px]" onClick={() => saveClassification(m.key, { isFee: true })}>💳 Marcar como comisión</button>
+                          {!pending && <button className="cv-btn-ghost px-3 py-1 text-[11px]" onClick={() => toggleCard(cardId)}>Listo</button>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -923,6 +955,8 @@ export default function MovementsView(props: MovementsViewProps) {
             </div>
           </>
         )}
+      </div>
+
       </div>
 
       {/* Hoja de filtros — solo móvil */}

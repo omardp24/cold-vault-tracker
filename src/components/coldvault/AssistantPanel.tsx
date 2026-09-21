@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Download, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Bot, Check, ChevronDown, Download, MessageCircle, RotateCcw, Send, X } from "lucide-react";
 import type { AssistantAction, ClassifyItem } from "@/lib/assistantActions";
 
-interface Msg { role: "user" | "assistant"; text: string; tools?: string[]; error?: boolean; actions?: AssistantAction[] }
+interface Msg { role: "user" | "assistant"; text: string; ts: number; tools?: string[]; error?: boolean; actions?: AssistantAction[] }
 export interface AppliedClassification { key: string; aliadoId: string | null; concepto: string; isFee: boolean }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -82,7 +82,7 @@ function ClassifyCard({ action, outcome, onResolve, onApplied }: {
                 <input type="checkbox" checked={picked.has(i.key)} onChange={() => toggle(i.key)} className="mt-0.5" />
                 <span className="min-w-0 flex-1">
                   <span className="block"><strong>{i.aliado}</strong>{i.concepto ? <> · {i.concepto}</> : null}
-                    {i.confianza && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: i.confianza === "alta" ? "rgba(80,180,120,.18)" : "rgba(220,170,60,.18)", color: "var(--dim)" }}>{i.fuente === "historial" ? "historial" : "IA"} · {i.confianza}</span>}
+                    {i.confianza && <span className="ml-1.5 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: i.confianza === "alta" ? "rgba(80,180,120,.18)" : "rgba(220,170,60,.18)", color: "var(--dim)" }}>{i.fuente === "historial" ? "historial" : "IA"} · {i.confianza}</span>}
                   </span>
                   <span className="block text-[11px] break-words" style={{ color: "var(--faint)" }}>{i.detalle}</span>
                   {i.razon && <span className="block text-[10.5px] italic" style={{ color: "var(--faint)" }}>{i.razon}</span>}
@@ -128,13 +128,48 @@ function StatementCard({ action }: { action: Extract<AssistantAction, { type: "e
   );
 }
 
+const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+
+function Avatar({ size = 30, online = false }: { size?: number; online?: boolean }) {
+  return (
+    <span className="relative inline-flex flex-shrink-0 items-center justify-center rounded-full" style={{ width: size, height: size, background: "linear-gradient(135deg, var(--accent), #ffb15e)", color: "#fff" }}>
+      <Bot size={Math.round(size * 0.55)} strokeWidth={2.2} />
+      {online && <span className="absolute -right-0.5 -bottom-0.5 rounded-full" style={{ width: Math.round(size * 0.3), height: Math.round(size * 0.3), background: "var(--pos)", border: "2px solid var(--panel)" }} />}
+    </span>
+  );
+}
+
+function Typing() {
+  return (
+    <div className="flex items-end gap-2">
+      <Avatar size={26} />
+      <div className="rounded-2xl rounded-bl-md px-3.5 py-3 flex items-center gap-1" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} aria-label="El asistente está escribiendo">
+        {[0, 1, 2].map((d) => <span key={d} className="cv-dot" style={{ animationDelay: `${d * 0.16}s` }} />)}
+      </div>
+    </div>
+  );
+}
+
 export default function AssistantPanel({ onClassificationsApplied }: { onClassificationsApplied?: (applied: AppliedClassification[]) => void }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [teaser, setTeaser] = useState(false);
   const [outcomes, setOutcomes] = useState<Record<string, ActionOutcome>>({});
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Globo de invitación ("¿Necesitas ayuda?") una sola vez por sesión, como en un chat de soporte.
+  useEffect(() => {
+    let seen = false;
+    try { seen = sessionStorage.getItem("cv-assistant-teaser") === "1"; } catch { /* sin almacenamiento */ }
+    if (seen) return;
+    const show = setTimeout(() => setTeaser(true), 2500);
+    const hide = setTimeout(() => setTeaser(false), 12000);
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, []);
+  const dismissTeaser = () => { setTeaser(false); try { sessionStorage.setItem("cv-assistant-teaser", "1"); } catch { /* ok */ } };
 
   useEffect(() => {
     if (!open) return;
@@ -145,10 +180,16 @@ export default function AssistantPanel({ onClassificationsApplied }: { onClassif
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy, open]);
 
+  // El textarea crece con el texto (hasta ~4 líneas), como el campo de un chat.
+  useEffect(() => {
+    const el = inputRef.current; if (!el) return;
+    el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }, [input, open]);
+
   const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || busy) return;
-    const next: Msg[] = [...msgs, { role: "user", text }];
+    const next: Msg[] = [...msgs, { role: "user", text, ts: Date.now() }];
     setMsgs(next); setInput(""); setBusy(true);
     try {
       const res = await fetch("/api/assistant", {
@@ -157,101 +198,144 @@ export default function AssistantPanel({ onClassificationsApplied }: { onClassif
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
-      setMsgs([...next, { role: "assistant", text: d.reply, tools: d.toolsUsed, actions: d.actions }]);
+      setMsgs([...next, { role: "assistant", text: d.reply, tools: d.toolsUsed, actions: d.actions, ts: Date.now() }]);
     } catch (e: any) {
-      setMsgs([...next, { role: "assistant", text: e.message || "No se pudo consultar al asistente.", error: true }]);
+      setMsgs([...next, { role: "assistant", text: e.message || "No se pudo consultar al asistente.", error: true, ts: Date.now() }]);
     }
     setBusy(false);
   };
 
+  const openChat = () => { dismissTeaser(); setOpen(true); setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250); };
+
   return (
     <>
       {!open && (
-        <button
-          onClick={() => setOpen(true)} title="Asistente de IA"
-          className="fixed z-40 right-4 bottom-[88px] md:bottom-6 flex items-center gap-2 rounded-full px-4 py-3 shadow-lg"
-          style={{ background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
-        >
-          <Sparkles size={17} /><span className="text-[13px] font-semibold hidden sm:inline">Asistente</span>
-        </button>
+        <div className="fixed z-40 right-4 flex items-end gap-2 md:bottom-6" style={{ bottom: "calc(84px + env(safe-area-inset-bottom))" }}>
+          {teaser && (
+            <button
+              onClick={openChat}
+              className="cv-pop relative mb-2 max-w-[210px] rounded-2xl rounded-br-md px-3.5 py-2.5 text-left text-[12.5px] shadow-lg"
+              style={{ background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", cursor: "pointer" }}
+            >
+              <span className="font-semibold">¿Necesitas ayuda? 👋</span>
+              <span className="block text-[11.5px]" style={{ color: "var(--dim)" }}>Puedo clasificar tus pendientes o resumirte la semana.</span>
+              <span role="button" aria-label="Cerrar aviso" onClick={(e) => { e.stopPropagation(); dismissTeaser(); }} className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--dim)" }}><X size={11} /></span>
+            </button>
+          )}
+          <button
+            onClick={openChat} title="Asistente de IA" aria-label="Abrir el asistente"
+            className="relative flex h-14 w-14 items-center justify-center rounded-full shadow-xl"
+            style={{ background: "linear-gradient(135deg, var(--accent), #ffb15e)", color: "#fff", border: "none", cursor: "pointer", boxShadow: "0 8px 24px rgba(247,123,28,.45)" }}
+          >
+            <MessageCircle size={25} strokeWidth={2.1} />
+            <span className="absolute right-0.5 top-0.5 h-3.5 w-3.5 rounded-full" style={{ background: "var(--pos)", border: "2.5px solid var(--bg)" }} />
+          </button>
+        </div>
       )}
 
       {open && (
         <>
-          {/* Fondo: tocar afuera cierra (en móvil el asistente es una hoja tipo pop-up, no pantalla completa) */}
-          <div className="fixed inset-0 z-40 md:hidden" style={{ background: "rgba(0,0,0,.55)" }} onClick={() => setOpen(false)} />
+          {/* Fondo tenue: tocar fuera minimiza el chat (solo móvil) */}
+          <div className="fixed inset-0 z-40 md:hidden" style={{ background: "rgba(0,0,0,.35)" }} onClick={() => setOpen(false)} />
           <div
             role="dialog" aria-label="Asistente de IA"
-            className="fixed z-50 inset-x-0 bottom-0 h-[80dvh] rounded-t-3xl md:inset-x-auto md:right-6 md:bottom-6 md:w-[400px] md:h-[600px] md:max-h-[calc(100vh-3rem)] md:rounded-2xl flex flex-col overflow-hidden"
-            style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 -8px 40px rgba(0,0,0,.4)", color: "var(--ink)" }}
+            className="cv-pop fixed z-50 left-3 right-3 flex flex-col overflow-hidden rounded-3xl md:left-auto md:right-6 md:bottom-6 md:w-[390px] md:h-[610px] md:max-h-[calc(100vh-3rem)]"
+            style={{
+              bottom: "calc(80px + env(safe-area-inset-bottom))", height: "min(74dvh, 640px)",
+              background: "var(--bg)", border: "1px solid var(--line)", boxShadow: "0 18px 60px rgba(0,0,0,.5)", color: "var(--ink)",
+            }}
           >
-          <div className="md:hidden flex justify-center pt-2" onClick={() => setOpen(false)}>
-            <div className="w-10 h-1 rounded-full" style={{ background: "var(--line)" }} />
-          </div>
-          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--line)", background: "var(--panel2)" }}>
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} style={{ color: "var(--accent)" }} />
-              <div>
-                <div className="font-display text-sm font-semibold leading-tight">Asistente Cold Vault</div>
-                <div className="text-[10.5px]" style={{ color: "var(--faint)" }}>Audita, clasifica y responde con tus datos</div>
+            {/* Encabezado tipo soporte: avatar, estado "en línea" y acciones */}
+            <div className="flex items-center gap-3 px-4 py-3" style={{ background: "linear-gradient(135deg, var(--accent), #ff9a45)", color: "#fff" }}>
+              <span className="relative inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(255,255,255,.22)" }}>
+                <Bot size={22} strokeWidth={2.1} />
+                <span className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full" style={{ background: "#3ed598", border: "2px solid var(--accent)" }} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-display text-[14.5px] font-semibold leading-tight">Asistente Cold Vault</div>
+                <div className="text-[11.5px] opacity-90">En línea · responde al instante</div>
               </div>
+              {msgs.length > 0 && <button className="cv-chat-btn" title="Nueva conversación" aria-label="Nueva conversación" onClick={() => setMsgs([])}><RotateCcw size={16} /></button>}
+              <button className="cv-chat-btn" title="Minimizar" aria-label="Minimizar el chat" onClick={() => setOpen(false)}><ChevronDown size={22} /></button>
             </div>
-            <div className="flex items-center gap-1">
-              {msgs.length > 0 && <button className="cv-x" title="Nueva conversación" onClick={() => setMsgs([])}><Trash2 size={15} /></button>}
-              <button className="cv-x" title="Cerrar" onClick={() => setOpen(false)}><X size={18} /></button>
-            </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[13px]">
-            {msgs.length === 0 && (
-              <div>
-                <div className="rounded-xl p-3 mb-3 text-[12.5px]" style={{ background: "var(--panel2)", color: "var(--dim)" }}>
-                  Hola, soy tu asistente. Puedo clasificar tus pendientes aprendiendo de lo que ya hiciste, auditar contrapartes, resumir periodos, preparar estados de cuenta y explicarte la app. Nada se guarda sin que tú lo confirmes.
+            <div className="flex-1 space-y-3 overflow-y-auto px-3.5 py-4 text-[13.5px]">
+              {/* Saludo inicial como mensaje del asistente + respuestas rápidas */}
+              <div className="flex items-end gap-2">
+                <Avatar size={26} />
+                <div className="max-w-[84%]">
+                  <div className="rounded-2xl rounded-bl-md px-3.5 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+                    ¡Hola! 👋 Soy el asistente de <strong>Cold Vault</strong>. Puedo clasificar tus pendientes aprendiendo de lo que ya hiciste, auditar contrapartes, resumir periodos y preparar estados de cuenta. <span style={{ color: "var(--dim)" }}>Nada se guarda sin que tú lo confirmes.</span>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2">
+              </div>
+              {msgs.length === 0 && (
+                <div className="flex flex-wrap gap-2 pl-9">
                   {QUICK.map((q) => (
-                    <button key={q} onClick={() => send(q)} className="text-left text-[12.5px] rounded-xl px-3 py-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--ink)", cursor: "pointer" }}>{q}</button>
+                    <button key={q} onClick={() => send(q)} className="rounded-full px-3 py-1.5 text-left text-[12.5px] font-medium" style={{ background: "var(--panel)", border: "1px solid var(--accent)", color: "var(--accent)", cursor: "pointer" }}>{q}</button>
                   ))}
                 </div>
-              </div>
-            )}
-            {msgs.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                <div
-                  className="max-w-[88%] rounded-2xl px-3.5 py-2.5"
-                  style={m.role === "user"
-                    ? { background: "var(--accent)", color: "#fff" }
-                    : { background: m.error ? "rgba(178,58,58,.14)" : "var(--panel2)", color: m.error ? "var(--neg)" : "var(--ink)", border: "1px solid var(--line)" }}
-                >
-                  {m.role === "user" ? m.text : <Rich text={m.text} />}
-                  {m.tools && m.tools.length > 0 && (
-                    <div className="text-[10px] mt-2 pt-1.5 border-t" style={{ borderColor: "var(--line)", color: "var(--faint)" }}>
-                      Consultó: {Array.from(new Set(m.tools.map((t) => TOOL_LABEL[t] || t))).join(", ")}
-                    </div>
-                  )}
-                  {m.actions?.map((a) => a.type === "clasificar"
-                    ? <ClassifyCard key={a.id} action={a} outcome={outcomes[a.id]} onResolve={(o) => setOutcomes((x) => ({ ...x, [a.id]: o }))} onApplied={(ap) => onClassificationsApplied?.(ap)} />
-                    : <StatementCard key={a.id} action={a} />)}
-                </div>
-              </div>
-            ))}
-            {busy && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl px-3.5 py-2.5 text-[12.5px] animate-pulse" style={{ background: "var(--panel2)", color: "var(--dim)", border: "1px solid var(--line)" }}>Revisando tus datos…</div>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
+              )}
 
-          <form className="flex items-end gap-2 p-3 border-t" style={{ borderColor: "var(--line)", paddingBottom: "max(12px, env(safe-area-inset-bottom))" }} onSubmit={(e) => { e.preventDefault(); void send(input); }}>
-            <textarea
-              className="cv-input flex-1 resize-none py-2 px-3 text-[13px]" rows={1} maxLength={2000}
-              placeholder="Pregunta algo o pide una auditoría…" value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(input); } }}
-            />
-            <button type="submit" disabled={busy || !input.trim()} className="cv-btn flex-shrink-0" style={{ padding: "10px 12px" }}><Send size={15} /></button>
-          </form>
+              {msgs.map((m, i) => m.role === "user" ? (
+                <div key={i} className="flex flex-col items-end">
+                  <div className="max-w-[84%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md px-3.5 py-2.5" style={{ background: "var(--accent)", color: "#fff" }}>{m.text}</div>
+                  <span className="mt-0.5 text-[10px]" style={{ color: "var(--faint)" }}>{fmtTime(m.ts)}</span>
+                </div>
+              ) : (
+                <div key={i} className="flex items-start gap-2">
+                  <Avatar size={26} />
+                  <div className="min-w-0 max-w-[88%]">
+                    <div
+                      className="rounded-2xl rounded-bl-md px-3.5 py-2.5"
+                      style={{ background: m.error ? "rgba(178,58,58,.14)" : "var(--panel)", color: m.error ? "var(--neg)" : "var(--ink)", border: `1px solid ${m.error ? "var(--neg)" : "var(--line)"}` }}
+                    >
+                      <Rich text={m.text} />
+                      {m.tools && m.tools.length > 0 && (
+                        <div className="mt-2 border-t pt-1.5 text-[10px]" style={{ borderColor: "var(--line)", color: "var(--faint)" }}>
+                          Consultó: {Array.from(new Set(m.tools.map((t) => TOOL_LABEL[t] || t))).join(", ")}
+                        </div>
+                      )}
+                    </div>
+                    {m.actions?.map((a) => a.type === "clasificar"
+                      ? <ClassifyCard key={a.id} action={a} outcome={outcomes[a.id]} onResolve={(o) => setOutcomes((x) => ({ ...x, [a.id]: o }))} onApplied={(ap) => onClassificationsApplied?.(ap)} />
+                      : <StatementCard key={a.id} action={a} />)}
+                    <span className="mt-0.5 block text-[10px]" style={{ color: "var(--faint)" }}>{fmtTime(m.ts)}</span>
+                  </div>
+                </div>
+              ))}
+              {busy && <Typing />}
+              <div ref={endRef} />
+            </div>
+
+            {/* Sugerencias rápidas siempre a mano una vez empezada la conversación */}
+            {msgs.length > 0 && !busy && (
+              <div className="flex gap-2 overflow-x-auto px-3.5 pb-2 pt-1" style={{ scrollbarWidth: "none" }}>
+                {QUICK.map((q) => (
+                  <button key={q} onClick={() => send(q)} className="flex-shrink-0 rounded-full px-3 py-1 text-[11.5px]" style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--dim)", cursor: "pointer", whiteSpace: "nowrap" }}>{q}</button>
+                ))}
+              </div>
+            )}
+
+            <form
+              className="border-t px-3 pt-2.5" style={{ borderColor: "var(--line)", background: "var(--panel)", paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}
+              onSubmit={(e) => { e.preventDefault(); void send(input); }}
+            >
+              <div className="flex items-end gap-2 rounded-3xl px-3 py-1.5" style={{ background: "var(--bg)", border: "1px solid var(--line)" }}>
+                <textarea
+                  ref={inputRef} rows={1} maxLength={2000} value={input}
+                  placeholder="Escribe tu mensaje…" aria-label="Mensaje"
+                  className="max-h-24 min-h-[32px] flex-1 resize-none bg-transparent py-1.5 text-[14px] outline-none"
+                  style={{ color: "var(--ink)", border: "none" }}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(input); } }}
+                />
+                <button type="submit" disabled={busy || !input.trim()} aria-label="Enviar" className="mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full" style={{ background: input.trim() && !busy ? "var(--accent)" : "var(--line)", color: "#fff", border: "none", cursor: input.trim() && !busy ? "pointer" : "default", transition: "background .15s" }}>
+                  <Send size={15} />
+                </button>
+              </div>
+              <div className="pb-1 pt-1.5 text-center text-[10px]" style={{ color: "var(--faint)" }}>La IA puede equivocarse: verifica cifras clave.</div>
+            </form>
           </div>
         </>
       )}

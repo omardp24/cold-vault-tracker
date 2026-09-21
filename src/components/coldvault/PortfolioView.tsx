@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "
 import { Check, ChevronRight, Download, Pencil, Plus, RefreshCw, Sparkles, Wallet as WalletIcon, X } from "lucide-react";
 import {
   AssetIcon, CHAIN_COLORS, CHAIN_LABEL, ChainBadge, Chain, Holding, ManualHolding, ValueCounter, Wallet,
-  fmtAmt, fmtUSD,
+  fmtAmt, fmtUSD, shortAddr,
 } from "./shared";
 import EvolutionChart, { PortfolioHistoryPoint, HistoryRange } from "./EvolutionChart";
 
@@ -107,17 +107,22 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
             <ChevronRight size={13} style={{ color: "var(--faint)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0, marginTop: 3 }} />
             <ChainBadge chain={wallet.chain} size={22} />
             <div className="min-w-0 flex-1">
-              {/* Nombre, dirección y saldo apilados en su propia línea completa cada uno — nunca
-                  comparten una fila con los botones de lápiz/borrar (columna aparte, ancho fijo).
-                  Antes el saldo compartía línea con el nombre y, al ser un texto largo, se
-                  desbordaba por fuera de su columna y quedaba debajo de esos botones. Apilado así,
-                  el saldo tiene todo el ancho de la tarjeta para él solo y puede partirse en varias
-                  líneas si hace falta, sin invadir el espacio de nada más. */}
-              <div className="text-[13px] font-medium truncate" style={{ color: "var(--ink)" }}>{wallet.label}</div>
-              <div className="font-mono text-[11px] truncate" style={{ color: "var(--faint)" }}>{wallet.address}</div>
-              <div className="font-mono text-[12px] mt-0.5" style={{ color: balance.error ? "var(--neg)" : "var(--dim)" }}>
-                {balance.loading ? "…" : balance.error || balance.detail}
-              </div>
+              {/* Nombre, dirección corta y saldos como «chips» (uno por activo): en el teléfono el texto
+                  largo del saldo se partía en líneas sueltas; así cada activo queda en su propia píldora
+                  y nada se mete debajo de los botones de lápiz/borrar (columna aparte, ancho fijo). */}
+              <div className="text-[13.5px] font-semibold truncate" style={{ color: "var(--ink)" }}>{wallet.label}</div>
+              <div className="font-mono text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(wallet.address)}</div>
+              {balance.loading ? (
+                <div className="font-mono text-[12px] mt-1" style={{ color: "var(--dim)" }}>…</div>
+              ) : balance.error ? (
+                <div className="text-[12px] mt-1" style={{ color: "var(--neg)" }}>{balance.error}</div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {(balance.detail || "").split(" · ").filter(Boolean).map((part) => (
+                    <span key={part} className="whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[11.5px]" style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{part}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </button>
         )}
@@ -144,10 +149,12 @@ export default function PortfolioView({
   pieData, holdings, colorForSymbol, loadGasFees, gasLoading, gasNow,
   history, historyLoading, historyRange, setHistoryRange, vesRates,
 }: PortfolioViewProps) {
+  // Móvil: el formulario de alta se abre con un botón; en pantallas grandes siempre está visible.
+  const [showAdd, setShowAdd] = useState(false);
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-4 mb-4 items-stretch">
-        <div className="cv-card cv-card-hover p-5 sm:p-6 cv-fade-in flex flex-col justify-between">
+        <div className="cv-card cv-card-hover p-4 sm:p-6 cv-fade-in flex flex-col justify-between">
           <div>
             <div className="cv-eyebrow flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--pos)" }} />
@@ -199,7 +206,7 @@ export default function PortfolioView({
           {errMsg && <div className="mt-3 text-xs" style={{ color: "var(--neg)" }}>{errMsg}</div>}
         </div>
 
-        <div className="cv-card cv-card-hover p-5 sm:p-6 cv-fade-in flex flex-col">
+        <div className="cv-card cv-card-hover p-4 sm:p-6 cv-fade-in flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <div className="font-display text-sm font-semibold" style={{ color: "var(--ink)" }}>Evolución</div>
             <div className="flex rounded-full p-1" style={{ background: "var(--panel2)" }}>
@@ -226,7 +233,10 @@ export default function PortfolioView({
             <div className="font-display text-sm font-semibold">Direcciones rastreadas</div>
           </div>
 
-          <div className="grid grid-cols-2 sm:flex gap-2 mb-3 sm:flex-wrap">
+          <button className="cv-btn-ghost cv-icon-btn justify-center w-full mb-3 sm:hidden" onClick={() => setShowAdd((v) => !v)}>
+            {showAdd ? <><X size={13} /> Cerrar</> : <><Plus size={13} /> Añadir wallet</>}
+          </button>
+          <div className={`${showAdd ? "grid" : "hidden"} grid-cols-2 sm:flex gap-2 mb-3 sm:flex-wrap`}>
             <select className="cv-select w-full sm:w-auto" value={chain} onChange={(e) => setChain(e.target.value as Chain)}>
               {(Object.keys(CHAIN_LABEL) as Chain[]).map((c) => <option key={c} value={c}>{CHAIN_LABEL[c]}</option>)}
             </select>
@@ -242,11 +252,11 @@ export default function PortfolioView({
           })}
           <div className="mt-4 pt-3.5 border-t border-dashed" style={{ borderColor: "var(--line)" }}>
             <div className="font-display text-[13px] font-semibold mb-2.5">Otro activo (manual)</div>
-            <div className="grid grid-cols-3 sm:flex gap-2 sm:flex-wrap">
-              <input className="cv-input w-full sm:w-[110px]" placeholder="id CoinGecko" value={manualCoinId} onChange={(e) => setManualCoinId(e.target.value)} />
+            <div className="grid grid-cols-2 sm:flex gap-2 sm:flex-wrap">
+              <input className="cv-input w-full col-span-2 sm:col-auto sm:w-[110px]" placeholder="id CoinGecko" value={manualCoinId} onChange={(e) => setManualCoinId(e.target.value)} />
               <input className="cv-input w-full sm:w-20" placeholder="símbolo" value={manualSymbol} onChange={(e) => setManualSymbol(e.target.value)} />
               <input className="cv-input w-full sm:w-[90px]" placeholder="cantidad" value={manualQty} onChange={(e) => setManualQty(e.target.value)} />
-              <button className="cv-btn-ghost cv-icon-btn justify-center col-span-3 sm:col-auto" onClick={addManual}><Plus size={13} /> Añadir</button>
+              <button className="cv-btn-ghost cv-icon-btn justify-center col-span-2 sm:col-auto" onClick={addManual}><Plus size={13} /> Añadir</button>
             </div>
             {manual.map((m) => (
               <div key={m.id} className="flex justify-between py-1.5 px-0.5 text-[12.5px]" style={{ color: "var(--ink)" }}>

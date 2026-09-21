@@ -285,3 +285,21 @@ body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }
+
+/* --- asistente: ventana de chat tipo soporte --- */
+@keyframes cv-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.cv-pop { animation: cv-pop 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; transform-origin: bottom right; }
+@keyframes cv-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.cv-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--dim); animation: cv-bounce 1.1s infinite ease-in-out; }
+.cv-chat-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+  border-radius: 9999px; background: rgba(255, 255, 255, 0.16); color: #fff; border: none; cursor: pointer;
+}
+.cv-chat-btn:hover { background: rgba(255, 255, 255, 0.28); }
+@media (prefers-reduced-motion: reduce) { .cv-pop, .cv-dot { animation: none; } }
