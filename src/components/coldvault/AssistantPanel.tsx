@@ -1,20 +1,24 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { Send, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Download, Send, Sparkles, Trash2, X } from "lucide-react";
+import type { AssistantAction, ClassifyItem } from "@/lib/assistantActions";
 
-interface Msg { role: "user" | "assistant"; text: string; tools?: string[]; error?: boolean }
+interface Msg { role: "user" | "assistant"; text: string; tools?: string[]; error?: boolean; actions?: AssistantAction[] }
+export interface AppliedClassification { key: string; aliadoId: string | null; concepto: string; isFee: boolean }
 
 const TOOL_LABEL: Record<string, string> = {
   resumen_portafolio: "portafolio", listar_aliados: "aliados", listar_movimientos: "movimientos",
   detectar_polvo_y_fraude: "polvo y fraude", auditar_direccion: "auditoría de dirección", auditar_pendientes: "auditoría de pendientes",
+  sugerir_clasificaciones: "clasificación automática", preparar_clasificacion: "clasificación", preparar_estado_de_cuenta: "estado de cuenta",
 };
 
 const QUICK = [
+  "Clasifica mis movimientos pendientes",
+  "Resumen de la última semana",
   "Audita mis movimientos pendientes",
-  "¿Cómo va el portafolio?",
   "Detecta transferencias de polvo y fraudes",
-  "¿Cómo exporto el estado de cuenta?",
+  "Estado de cuenta del mes pasado",
 ];
 
 // Renderizador mínimo (negritas, código, listas) sin dangerouslySetInnerHTML: el texto de la IA nunca se inyecta como HTML.
@@ -44,11 +48,92 @@ function Rich({ text }: { text: string }) {
   );
 }
 
-export default function AssistantPanel() {
+type ActionOutcome = { kind: "done" | "discarded"; text: string };
+
+function ClassifyCard({ action, outcome, onResolve, onApplied }: {
+  action: Extract<AssistantAction, { type: "clasificar" }>; outcome?: ActionOutcome;
+  onResolve: (o: ActionOutcome) => void; onApplied: (a: AppliedClassification[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(action.items.filter((i) => !(i.fuente === "ia" && i.confianza !== "alta")).map((i) => i.key))); // las de IA con confianza media empiezan sin marcar
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const toggle = (k: string) => setPicked((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const apply = async () => {
+    const items = action.items.filter((i: ClassifyItem) => picked.has(i.key)).map((i) => ({ key: i.key, aliadoId: i.aliadoId, concepto: i.concepto, isFee: i.isFee }));
+    if (items.length === 0) return;
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/classifications/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
+      onApplied(d.applied || []);
+      onResolve({ kind: "done", text: `✓ Se aplicaron ${d.applied?.length ?? items.length} clasificaciones${d.skipped ? ` (${d.skipped} omitidas)` : ""}.` });
+    } catch (e: any) { setErr(e.message || "No se pudo guardar."); }
+    setBusy(false);
+  };
+  return (
+    <div className="mt-2 rounded-xl overflow-hidden" style={{ border: "1px solid var(--accent)", background: "var(--panel)" }}>
+      <div className="px-3 py-2 text-[12px] font-semibold flex items-center gap-1.5" style={{ background: "var(--panel2)" }}><Check size={13} style={{ color: "var(--accent)" }} />{action.titulo}</div>
+      {outcome ? <div className="px-3 py-2.5 text-[12px]" style={{ color: outcome.kind === "done" ? "var(--pos)" : "var(--dim)" }}>{outcome.text}</div> : (
+        <>
+          <div className="max-h-[260px] overflow-y-auto divide-y" style={{ borderColor: "var(--line)" }}>
+            {action.items.map((i) => (
+              <label key={i.key} className="flex gap-2 px-3 py-2 cursor-pointer text-[12px]" style={{ borderColor: "var(--line)" }}>
+                <input type="checkbox" checked={picked.has(i.key)} onChange={() => toggle(i.key)} className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block"><strong>{i.aliado}</strong>{i.concepto ? <> · {i.concepto}</> : null}
+                    {i.confianza && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: i.confianza === "alta" ? "rgba(80,180,120,.18)" : "rgba(220,170,60,.18)", color: "var(--dim)" }}>{i.fuente === "historial" ? "historial" : "IA"} · {i.confianza}</span>}
+                  </span>
+                  <span className="block text-[11px] break-words" style={{ color: "var(--faint)" }}>{i.detalle}</span>
+                  {i.razon && <span className="block text-[10.5px] italic" style={{ color: "var(--faint)" }}>{i.razon}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+          {err && <div className="px-3 py-1.5 text-[11.5px]" style={{ color: "var(--neg)" }}>{err}</div>}
+          <div className="flex gap-2 p-2.5 border-t" style={{ borderColor: "var(--line)" }}>
+            <button className="cv-btn flex-1" disabled={busy || picked.size === 0} onClick={apply}>{busy ? "Guardando…" : `Aplicar ${picked.size}`}</button>
+            <button className="cv-btn-ghost" disabled={busy} onClick={() => onResolve({ kind: "discarded", text: "Descartado, no se guardó nada." })}>Descartar</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatementCard({ action }: { action: Extract<AssistantAction, { type: "estado_cuenta" }> }) {
+  const [busy, setBusy] = useState<"pdf" | "excel" | null>(null);
+  const [err, setErr] = useState("");
+  const download = async (format: "pdf" | "excel") => {
+    setBusy(format); setErr("");
+    try {
+      const res = await fetch("/api/statement/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ desde: action.desde, hasta: action.hasta, aliadoId: action.aliadoId, format }) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Error ${res.status}`); }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = `estado_cuenta_${action.desde}_${action.hasta}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e: any) { setErr(e.message || "No se pudo generar."); }
+    setBusy(null);
+  };
+  return (
+    <div className="mt-2 rounded-xl overflow-hidden" style={{ border: "1px solid var(--accent)", background: "var(--panel)" }}>
+      <div className="px-3 py-2 text-[12px] font-semibold flex items-center gap-1.5" style={{ background: "var(--panel2)" }}><Download size={13} style={{ color: "var(--accent)" }} />{action.titulo}</div>
+      <div className="flex gap-2 p-2.5">
+        <button className="cv-btn flex-1" disabled={!!busy} onClick={() => download("pdf")}>{busy === "pdf" ? "Generando…" : "Descargar PDF"}</button>
+        <button className="cv-btn-ghost flex-1" disabled={!!busy} onClick={() => download("excel")}>{busy === "excel" ? "Generando…" : "Excel"}</button>
+      </div>
+      {err && <div className="px-3 pb-2 text-[11.5px]" style={{ color: "var(--neg)" }}>{err}</div>}
+    </div>
+  );
+}
+
+export default function AssistantPanel({ onClassificationsApplied }: { onClassificationsApplied?: (applied: AppliedClassification[]) => void }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [outcomes, setOutcomes] = useState<Record<string, ActionOutcome>>({});
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,7 +157,7 @@ export default function AssistantPanel() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
-      setMsgs([...next, { role: "assistant", text: d.reply, tools: d.toolsUsed }]);
+      setMsgs([...next, { role: "assistant", text: d.reply, tools: d.toolsUsed, actions: d.actions }]);
     } catch (e: any) {
       setMsgs([...next, { role: "assistant", text: e.message || "No se pudo consultar al asistente.", error: true }]);
     }
@@ -108,7 +193,7 @@ export default function AssistantPanel() {
               <Sparkles size={16} style={{ color: "var(--accent)" }} />
               <div>
                 <div className="font-display text-sm font-semibold leading-tight">Asistente Cold Vault</div>
-                <div className="text-[10.5px]" style={{ color: "var(--faint)" }}>Audita y responde con tus datos · solo lectura</div>
+                <div className="text-[10.5px]" style={{ color: "var(--faint)" }}>Audita, clasifica y responde con tus datos</div>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -121,7 +206,7 @@ export default function AssistantPanel() {
             {msgs.length === 0 && (
               <div>
                 <div className="rounded-xl p-3 mb-3 text-[12.5px]" style={{ background: "var(--panel2)", color: "var(--dim)" }}>
-                  Hola, soy tu asistente. Puedo revisar tus movimientos pendientes, auditar contrapartes, resumir el portafolio y explicarte cómo usar la app. No modifico nada: solo te digo qué encontré y qué hacer.
+                  Hola, soy tu asistente. Puedo clasificar tus pendientes aprendiendo de lo que ya hiciste, auditar contrapartes, resumir periodos, preparar estados de cuenta y explicarte la app. Nada se guarda sin que tú lo confirmes.
                 </div>
                 <div className="flex flex-col gap-2">
                   {QUICK.map((q) => (
@@ -144,6 +229,9 @@ export default function AssistantPanel() {
                       Consultó: {Array.from(new Set(m.tools.map((t) => TOOL_LABEL[t] || t))).join(", ")}
                     </div>
                   )}
+                  {m.actions?.map((a) => a.type === "clasificar"
+                    ? <ClassifyCard key={a.id} action={a} outcome={outcomes[a.id]} onResolve={(o) => setOutcomes((x) => ({ ...x, [a.id]: o }))} onApplied={(ap) => onClassificationsApplied?.(ap)} />
+                    : <StatementCard key={a.id} action={a} />)}
                 </div>
               </div>
             ))}

@@ -1068,7 +1068,11 @@ export default function ColdVault() {
       </div>
     </div>
 
-    <AssistantPanel />
+    <AssistantPanel onClassificationsApplied={(applied) => setClassifications((c) => {
+      const next = { ...c };
+      applied.forEach((a) => { next[a.key] = { aliadoId: a.aliadoId, concepto: a.concepto, isFee: a.isFee }; });
+      return next;
+    })} />
 
     {/* Barra de navegación inferior — solo móvil */}
     <nav className="cv-tabbar md:hidden">

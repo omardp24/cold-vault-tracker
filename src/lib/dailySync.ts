@@ -1,6 +1,7 @@
 import { assessAddressRisk } from "./addressRisk";
+import { buildBriefing } from "./briefing";
 import { historyFetchers } from "./chains";
-import type { HistoryPage } from "./chains/types";
+import type { HistoryPage, Movement } from "./chains/types";
 import { readDb } from "./db";
 import { sendMonthlyReports } from "./monthlyReport";
 import { computePortfolioBreakdown } from "./portfolioValue";
@@ -12,6 +13,7 @@ export interface DailySyncResult {
   walletSnapshots: number;
   notified: number;
   monthlyReportsSent: boolean;
+  briefingSent: boolean;
 }
 
 /**
@@ -24,17 +26,23 @@ export async function runDailySync(): Promise<DailySyncResult> {
   const db = await readDb();
 
   const breakdown = await computePortfolioBreakdown();
+  // Total del snapshot anterior (antes de insertar el de hoy) para poder decir cuánto varió el portafolio.
+  const { data: prevSnap } = await supabase.from("portfolio_snapshots").select("total_usd").order("taken_at", { ascending: false }).limit(1);
+  const prevTotal = prevSnap?.[0]?.total_usd != null ? Number(prevSnap[0].total_usd) : null;
   await supabase.from("portfolio_snapshots").insert({ total_usd: breakdown.total });
   if (breakdown.perWallet.length > 0) {
     await supabase.from("wallet_snapshots").insert(breakdown.perWallet.map((p) => ({ wallet_id: p.walletId, balance_usd: p.usd })));
   }
 
   let notified = 0;
+  const dayAgo = Date.now() - 24 * 3600_000;
+  const recent: (Movement & { walletLabel: string })[] = [];
   for (const w of db.wallets) {
     try {
       const hist = (await historyFetchers[w.chain](w.address)) as HistoryPage;
       const page = hist.movements.slice(0, 25); // un vistazo a lo más reciente, no todo el historial
       if (page.length === 0) continue;
+      page.forEach((m) => { if (m.date && m.date >= dayAgo) recent.push({ ...m, walletLabel: w.label }); });
 
       // Las claves de movimientos antes incluían la posición en la lista (ver lib/classificationKeys.ts).
       // Para no volver a avisar de todo lo ya notificado con el formato viejo, un movimiento también se
@@ -92,8 +100,20 @@ export async function runDailySync(): Promise<DailySyncResult> {
     }
   }
 
+  // Resumen del día (Gemini solo redacta cifras calculadas aquí). Solo se manda si hubo movimientos.
+  let briefingSent = false;
+  try {
+    const briefing = await buildBriefing({
+      db, recent, priceLookup: breakdown.priceLookup, total: breakdown.total, prevTotal,
+      failedWallets: db.wallets.filter((w) => breakdown.failedWalletIds.includes(w.id)).map((w) => w.label),
+    });
+    if (briefing) { await sendToAll({ ...briefing, data: { kind: "briefing" } }); briefingSent = true; }
+  } catch (e) {
+    console.error("dailySync: error enviando el resumen del día:", e);
+  }
+
   let monthlyReportsSent = false;
-  // Día del mes en hora de Venezuela (el cron corre a las 06:00 UTC = 02:00 en Caracas).
+  // Día del mes en hora de Venezuela (el cron corre a las 12:00 UTC = 08:00 en Caracas).
   if (new Date(Date.now() - 4 * 3600_000).getUTCDate() === 1) {
     try {
       await sendMonthlyReports();
@@ -103,5 +123,5 @@ export async function runDailySync(): Promise<DailySyncResult> {
     }
   }
 
-  return { totalUsd: breakdown.total, walletSnapshots: breakdown.perWallet.length, notified, monthlyReportsSent };
+  return { totalUsd: breakdown.total, walletSnapshots: breakdown.perWallet.length, notified, monthlyReportsSent, briefingSent };
 }

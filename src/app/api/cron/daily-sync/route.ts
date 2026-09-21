@@ -6,6 +6,9 @@ import { runDailySync } from "@/lib/dailySync";
 // Un solo cron para todo (snapshot de portafolio + por wallet, notificaciones push de
 // movimientos nuevos/sospechosos, reporte mensual por correo el día 1) — evita depender
 // de más de un cron job del plan de Vercel.
+// Recorre todas las wallets, arma el resumen con IA y (día 1) el reporte mensual: puede tardar.
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
