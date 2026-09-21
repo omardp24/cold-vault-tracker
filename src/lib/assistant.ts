@@ -37,7 +37,6 @@ QUÉ ES LA APP (para ayudar a usarla):
 - Portafolio: saldos en vivo de cada wallet, total en USD (precio de mercado real, incluso stablecoins), evolución y asignación. Se pueden añadir, renombrar (lápiz) y borrar wallets. Solo direcciones públicas: la app nunca tiene claves privadas y no envía fondos.
 - Movimientos: historial por wallet. Cada movimiento se clasifica con un aliado (proveedor/cliente) y un concepto; también se marca "comisión de red". Transferencias entre wallets propias se detectan solas como "internas". Se puede filtrar y exportar el Estado de cuenta en PDF o Excel (botón "Estado de cuenta").
 - Auditoría: revisa una dirección contra la lista de sanciones OFAC, listas negras/fraude de Tronscan y "address poisoning" (direcciones casi idénticas a las conocidas).
-- Transferir: planes de transferencia por tramos desde varias wallets hacia un destino, con checklist y "cuánto falta por transferir".
 - Usuarios: solo el propietario; invitaciones y registro de actividad.
 - Todos los días a las 2 a. m. (hora de Venezuela) un proceso revisa movimientos nuevos y manda notificaciones push; el día 1 de cada mes se envía por correo el estado de cuenta del mes anterior.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Send, Sun, Users, Wallet as WalletIcon } from "lucide-react";
+import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Sun, Users, Wallet as WalletIcon } from "lucide-react";
 import {
   Aliado, Chain, Classification, Holding, ManualHolding, Movement, Wallet,
   CHAIN_COLORS, CHAIN_LABEL, FIXED_STABLECOINS, SYMBOL_COINGECKO,
@@ -15,12 +15,11 @@ import AssistantPanel from "./coldvault/AssistantPanel";
 import PortfolioView from "./coldvault/PortfolioView";
 import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart";
 import MovementsView from "./coldvault/MovementsView";
-import TransferView, { XferLeg } from "./coldvault/TransferView";
 import { buildStatementData } from "@/lib/statementAggregation";
 import { assessSuspicion, buildKnownIndex } from "@/lib/suspicious";
 
 export default function ColdVault() {
-  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "users">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "users">("portfolio");
   const [loaded, setLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string; role: "owner" | "member" } | null>(null);
 
@@ -75,161 +74,19 @@ export default function ColdVault() {
   const [showSuspicious, setShowSuspicious] = useState(false);
   const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "fee" | "suspicious">("all");
 
-  // --- planificador de transferencias (multi-tramo, con monto objetivo y transferencia de prueba) ---
-  const [xferTargetAmount, setXferTargetAmount] = useState("");
-  const [xferTargetAsset, setXferTargetAsset] = useState("USDT");
-  const [xferDest, setXferDest] = useState("");
-  const [xferLegs, setXferLegs] = useState<XferLeg[]>([]);
-  const [includeTest, setIncludeTest] = useState(true);
-  const [testAmount, setTestAmount] = useState("1");
-
-  const [balanceCache, setBalanceCache] = useState<Record<string, { symbol: string; amount: number }[]>>({});
-  const [feeCache, setFeeCache] = useState<Record<string, any>>({});
-  const [destAudit, setDestAudit] = useState<any>(null);
-  const [destAuditRunning, setDestAuditRunning] = useState(false);
-  const [planRunning, setPlanRunning] = useState(false);
-  const [planError, setPlanError] = useState("");
-
-  const ensureBalance = async (walletId: string) => {
-    if (balanceCache[walletId]) return balanceCache[walletId];
-    const w = wallets.find((x) => x.id === walletId);
-    if (!w) return [];
-    try {
-      const res = await fetch(`/api/balance?chain=${w.chain}&address=${encodeURIComponent(w.address)}`);
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error);
-      const list = [{ symbol: d.native.symbol, amount: d.native.amount }, ...d.tokens.map((t: any) => ({ symbol: t.symbol, amount: t.amount }))];
-      setBalanceCache((c) => ({ ...c, [walletId]: list }));
-      return list;
-    } catch {
-      return [];
-    }
-  };
-
-  const ensureFee = async (chain: Chain, isToken: boolean) => {
-    const key = `${chain}-${isToken}`;
-    if (feeCache[key]) return feeCache[key];
-    try {
-      const res = await fetch(`/api/fees?chain=${chain}&isToken=${isToken}`);
-      const d = await res.json();
-      setFeeCache((c) => ({ ...c, [key]: res.ok ? d : { error: d.error } }));
-      return d;
-    } catch (e: any) {
-      const err = { error: e.message };
-      setFeeCache((c) => ({ ...c, [key]: err }));
-      return err;
-    }
-  };
-
-  const addLeg = () => setXferLegs((legs) => [...legs, { id: crypto.randomUUID(), walletId: "", asset: xferTargetAsset, amount: "", isTest: false }]);
-  const removeLeg = (id: string) => setXferLegs((legs) => legs.filter((l) => l.id !== id));
-  const updateLeg = (id: string, patch: Partial<XferLeg>) => setXferLegs((legs) => legs.map((l) => (l.id === id ? { ...l, ...patch } : l)));
-
-  const onLegWalletChange = async (id: string, walletId: string) => {
-    updateLeg(id, { walletId, asset: xferTargetAsset });
-    await ensureBalance(walletId);
-    const w = wallets.find((x) => x.id === walletId);
-    if (w) ensureFee(w.chain, xferTargetAsset !== (w.chain === "BTC" ? "BTC" : w.chain === "ETH" ? "ETH" : "TRX"));
-  };
-
-  const buildPlan = async () => {
-    setPlanRunning(true); setPlanError("");
-    try {
-      await Promise.all(xferLegs.filter((l) => l.walletId).map((l) => ensureBalance(l.walletId)));
-      await Promise.all(
-        xferLegs.filter((l) => l.walletId).map((l) => {
-          const w = wallets.find((x) => x.id === l.walletId)!;
-          const isNative = l.asset === (w.chain === "BTC" ? "BTC" : w.chain === "ETH" ? "ETH" : "TRX");
-          return ensureFee(w.chain, !isNative);
-        })
-      );
-      if (xferDest.trim()) {
-        setDestAuditRunning(true);
-        const firstWallet = wallets.find((x) => x.id === xferLegs[0]?.walletId);
-        const chainForAudit = firstWallet?.chain || "TRON";
-        const res = await fetch(`/api/audit?chain=${chainForAudit}&address=${encodeURIComponent(xferDest.trim())}`);
-        const d = await res.json();
-        setDestAudit(res.ok ? d : { error: d.error });
-        setDestAuditRunning(false);
-      }
-    } catch (e: any) {
-      setPlanError(e.message || "No se pudo completar el plan.");
-    }
-    setPlanRunning(false);
-  };
-
-  const testLeg: XferLeg | null =
-    includeTest && xferLegs.length > 0 && xferLegs[0].walletId
-      ? { id: "__test__", walletId: xferLegs[0].walletId, asset: xferLegs[0].asset, amount: testAmount, isTest: true }
-      : null;
-  const allLegs = testLeg ? [testLeg, ...xferLegs] : xferLegs;
-  const totalPlanned = allLegs.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0); // incluye la prueba: es dinero real que también llega al destino
-  const targetNum = parseFloat(xferTargetAmount) || 0;
-  const diff = totalPlanned - targetNum;
-
-  // --- historial de planes guardados ---
-  const [plans, setPlans] = useState<any[]>([]);
-  const [savingPlan, setSavingPlan] = useState(false);
-
-  const savePlan = async () => {
-    const legsPayload = allLegs.filter((l) => l.walletId).map((l) => {
-      const w = wallets.find((x) => x.id === l.walletId)!;
-      return { walletId: l.walletId, walletLabel: w.label, chain: w.chain, asset: l.asset, amount: parseFloat(l.amount) || 0, isTest: l.isTest };
-    });
-    if (legsPayload.length === 0 || !xferDest.trim()) return;
-    setSavingPlan(true);
-    try {
-      const destLabel = findAliadoByAddress(xferDest.trim())?.name || "";
-      const res = await fetch("/api/plans", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetAmount: targetNum, targetAsset: xferTargetAsset, destination: xferDest.trim(), destLabel, legs: legsPayload }),
-      });
-      const plan = await res.json();
-      if (res.ok) {
-        setPlans((p) => [plan, ...p]);
-        setXferLegs([]); setXferTargetAmount(""); setXferDest(""); setDestAudit(null);
-      }
-    } catch (e) { /* silencioso */ }
-    setSavingPlan(false);
-  };
-
-  const updatePlanLeg = async (planId: string, legId: string, patch: { done?: boolean; txHash?: string; notes?: string }) => {
-    setPlans((ps) => ps.map((p) => (p.id === planId ? { ...p, legs: p.legs.map((l: any) => (l.id === legId ? { ...l, ...patch, doneAt: patch.done !== undefined ? (patch.done ? Date.now() : null) : l.doneAt } : l)) } : p)));
-    await fetch(`/api/plans/${planId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ legId, ...patch }) });
-  };
-
-  const uploadAttachment = async (planId: string, legId: string, file: File) => {
-    const fd = new FormData(); fd.append("legId", legId); fd.append("file", file);
-    try {
-      const res = await fetch(`/api/plans/${planId}/upload`, { method: "POST", body: fd });
-      const d = await res.json();
-      if (!res.ok) { alert(`No se pudo adjuntar el archivo: ${d.error || res.status}`); return; }
-      setPlans((ps) => ps.map((p) => (p.id === planId ? d.plan : p)));
-    } catch (e: any) {
-      alert(`No se pudo adjuntar el archivo: ${e.message || "error de red"}`);
-    }
-  };
-
-  const deletePlan = async (planId: string) => {
-    if (!window.confirm("¿Eliminar este plan del historial? Los comprobantes adjuntos también se perderán.")) return;
-    await fetch(`/api/plans/${planId}`, { method: "DELETE" });
-    setPlans((ps) => ps.filter((p) => p.id !== planId));
-  };
-
   const quickAuditFor = (m: Movement) => (m.counterparty ? quickAudit[`${m.chain}:${m.counterparty.toLowerCase()}`] : undefined);
 
   /* ---------- initial load ---------- */
   useEffect(() => {
     (async () => {
-      const [w, m, a, c, p, meRes] = await Promise.all([
+      const [w, m, a, c, meRes] = await Promise.all([
         fetch("/api/wallets").then((r) => r.json()),
         fetch("/api/manual").then((r) => r.json()),
         fetch("/api/aliados").then((r) => r.json()),
         fetch("/api/classifications").then((r) => r.json()),
-        fetch("/api/plans").then((r) => r.json()),
         fetch("/api/auth/me").then((r) => r.json()),
       ]);
-      setWallets(w); setManual(m); setAliados(a); setClassifications(c); setPlans(p);
+      setWallets(w); setManual(m); setAliados(a); setClassifications(c);
       setCurrentUser(meRes.user);
       setLoaded(true);
     })();
@@ -992,12 +849,11 @@ export default function ColdVault() {
 
   const { theme, toggleTheme } = useTheme();
 
-  type TabId = "portfolio" | "movements" | "audit" | "transfer" | "users";
+  type TabId = "portfolio" | "movements" | "audit" | "users";
   const NAV_ITEMS: { id: TabId; label: string; Icon: any; badge?: number }[] = [
     { id: "portfolio", label: "Portafolio", Icon: WalletIcon },
     { id: "movements", label: "Movimientos", Icon: ArrowLeftRight, badge: pendingCount || undefined },
     { id: "audit", label: "Auditoría", Icon: ShieldCheck },
-    { id: "transfer", label: "Transferir", Icon: Send },
     ...(currentUser?.role === "owner" ? [{ id: "users" as const, label: "Usuarios", Icon: Users }] : []),
   ];
   const SidebarNavBtn = ({ id, label, Icon, badge }: { id: TabId; label: string; Icon: any; badge?: number }) => {
@@ -1202,23 +1058,6 @@ export default function ColdVault() {
 
 
         {tab === "audit" && <AuditTab />}
-
-        {tab === "transfer" && (
-          <TransferView
-            wallets={wallets}
-            xferTargetAmount={xferTargetAmount} setXferTargetAmount={setXferTargetAmount}
-            xferTargetAsset={xferTargetAsset} setXferTargetAsset={setXferTargetAsset}
-            xferDest={xferDest} setXferDest={setXferDest} xferLegs={xferLegs}
-            includeTest={includeTest} setIncludeTest={setIncludeTest} testAmount={testAmount} setTestAmount={setTestAmount}
-            balanceCache={balanceCache} feeCache={feeCache} onLegWalletChange={onLegWalletChange}
-            updateLeg={updateLeg} removeLeg={removeLeg} addLeg={addLeg}
-            totalPlanned={totalPlanned} targetNum={targetNum} diff={diff}
-            buildPlan={buildPlan} planRunning={planRunning} planError={planError}
-            destAudit={destAudit} destAuditRunning={destAuditRunning}
-            allLegs={allLegs} savePlan={savePlan} savingPlan={savingPlan}
-            plans={plans} updatePlanLeg={updatePlanLeg} uploadAttachment={uploadAttachment} deletePlan={deletePlan}
-          />
-        )}
 
         {tab === "users" && currentUser?.role === "owner" && <UsersTab currentUser={currentUser} />}
 

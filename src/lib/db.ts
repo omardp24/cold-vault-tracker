@@ -33,38 +33,6 @@ export interface Classification {
   isFee?: boolean; // comisión de red / cargo de plataforma — no es una transferencia real a un aliado
 }
 
-export interface PlanAttachment {
-  filename: string; // ruta dentro del bucket de Supabase Storage
-  url: string; // ruta de nuestra propia API que genera un link firmado al pedirlo (protegido por sesión)
-  originalName: string;
-  uploadedAt: number;
-}
-
-export interface PlanLeg {
-  id: string;
-  walletId: string;
-  walletLabel: string;
-  chain: Chain;
-  asset: string;
-  amount: number;
-  isTest: boolean;
-  done: boolean;
-  doneAt: number | null;
-  txHash: string;
-  notes: string;
-  attachments: PlanAttachment[];
-}
-
-export interface TransferPlan {
-  id: string;
-  createdAt: number;
-  targetAmount: number;
-  targetAsset: string;
-  destination: string;
-  destLabel: string; // aliado o etiqueta libre, si se conoce
-  legs: PlanLeg[];
-}
-
 export type Role = "owner" | "member";
 
 export interface User {
@@ -102,7 +70,6 @@ export interface DB {
   manual: ManualHolding[];
   aliados: Aliado[];
   classifications: Record<string, Classification>; // key: `${chain}-${txid}[-idx]`
-  plans: TransferPlan[];
   users: User[];
   sessions: Record<string, Session>; // token -> session
   invites: Invite[];
@@ -110,7 +77,7 @@ export interface DB {
   classificationKeysVersion?: number; // 2 = claves estables por txid (ver lib/classificationKeys.ts)
 }
 
-const EMPTY_DB: DB = { wallets: [], manual: [], aliados: [], classifications: {}, plans: [], users: [], sessions: {}, invites: [], pushSubscriptions: [] };
+const EMPTY_DB: DB = { wallets: [], manual: [], aliados: [], classifications: {}, users: [], sessions: {}, invites: [], pushSubscriptions: [] };
 
 // Todo el estado de la app vive en una sola fila (id = true) de la tabla `app_state`,
 // en una columna jsonb. Simple, y suficiente para el volumen de esta herramienta —
