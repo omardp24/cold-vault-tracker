@@ -81,6 +81,9 @@ export interface MovementsViewProps {
   hideUnpriced: boolean;
   setHideUnpriced: Dispatch<SetStateAction<boolean>>;
   dustHiddenCount: number;
+  suspiciousCount: number;
+  showSuspicious: boolean;
+  setShowSuspicious: Dispatch<SetStateAction<boolean>>;
 
   exportFiltered: () => void;
   generateStatement: (format: "pdf" | "excel") => void;
@@ -130,7 +133,7 @@ export default function MovementsView(props: MovementsViewProps) {
     summaryRows, summaryRowsIn, nameFor, internalTotal, feeTotal,
     searchText, setSearchText, activeFilterCount, showFilterSheet, setShowFilterSheet, showExportSheet, setShowExportSheet,
     dirFilter, setDirFilter, estadoFilter, setEstadoFilter, dateFrom, setDateFrom, dateTo, setDateTo,
-    minUsd, setMinUsd, hideUnpriced, setHideUnpriced, dustHiddenCount,
+    minUsd, setMinUsd, hideUnpriced, setHideUnpriced, dustHiddenCount, suspiciousCount, showSuspicious, setShowSuspicious,
     exportFiltered, generateStatement, statementGenerating,
     flowSummary, visibleMovements, filteredMovements, pendingCount,
     showGroupClassifier, setShowGroupClassifier, groupViewMode, setGroupViewMode, feeThreshold, setFeeThreshold,
@@ -712,6 +715,21 @@ export default function MovementsView(props: MovementsViewProps) {
           {dustHiddenCount > 0 && <span>· {dustHiddenCount} ocultos</span>}
         </div>
 
+        {estadoFilter === "suspicious" ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
+            <span>🚩 Viendo solo <strong>polvo y posible fraude</strong> — no se mezclan con tus movimientos.</span>
+            <button className="cv-btn-ghost text-[11.5px]" onClick={() => setEstadoFilter("all")}>Volver a mis movimientos</button>
+          </div>
+        ) : suspiciousCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
+            <span>🚩 {showSuspicious ? `Mostrando ${suspiciousCount}` : `${suspiciousCount} ocultas:`} entradas de polvo / posible fraude{showSuspicious ? " mezcladas en la lista" : ""}.</span>
+            <button className="cv-btn-ghost text-[11.5px]" onClick={() => setEstadoFilter("suspicious")}>Verlas por separado</button>
+            <label className="flex items-center gap-1.5 cursor-pointer text-[11.5px]">
+              <input type="checkbox" checked={showSuspicious} onChange={(e) => setShowSuspicious(e.target.checked)} /> Incluirlas en los movimientos
+            </label>
+          </div>
+        ) : null}
+
         {filteredMovements.length === 0 ? (
           <div className="text-[12.5px]" style={{ color: "var(--dim)" }}>Sin movimientos para mostrar.</div>
         ) : (
@@ -749,7 +767,7 @@ export default function MovementsView(props: MovementsViewProps) {
 
                     {(!m.verified || isPoisoningSuspect(m.counterparty) || suspicionFor(m) || qa?.sanctioned || qa?.blacklisted || m.otherCount > 0) && (
                       <div className="flex flex-wrap gap-1 mb-2">
-                        {suspicionFor(m) && <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>{suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}</span>}
+                        {suspicionFor(m) && <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>{suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}</span>}
                         {!m.verified && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>⚠ NO VERIFICADO</span>}
                         {isPoisoningSuspect(m.counterparty) && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--amber)", color: "var(--ink)" }}>⚠ similar a otra</span>}
                         {qa?.sanctioned && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>🚫 SANCIONADA</span>}
@@ -834,29 +852,31 @@ export default function MovementsView(props: MovementsViewProps) {
                           </span>
                         )}
                       </td>
-                      <td className="p-2">
+                      <td className="p-2 min-w-[150px]">
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                         <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
                         {m.otherCount > 0 && <span className="text-[10.5px]" style={{ color: "var(--dim)" }}> +{m.otherCount} más</span>}
                         {suspicionFor(m) && (
-                          <span title={suspicionFor(m)!.reason} className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>
+                          <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>
                             {suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}
                           </span>
                         )}
                         {isPoisoningSuspect(m.counterparty) && (
-                          <span title="Esta dirección se parece mucho a otra que has usado, pero es distinta — posible address poisoning. No la copies de aquí, verifica siempre en el explorador." className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--amber)", color: "var(--ink)" }}>
+                          <span title="Esta dirección se parece mucho a otra que has usado, pero es distinta — posible address poisoning. No la copies de aquí, verifica siempre en el explorador." className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--amber)", color: "var(--ink)" }}>
                             ⚠ similar a otra
                           </span>
                         )}
                         {qa?.sanctioned && (
-                          <span title={`Dirección en la lista de sanciones OFAC (${qa.sanctionLists.join(", ")}).`} className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>
+                          <span title={`Dirección en la lista de sanciones OFAC (${qa.sanctionLists.join(", ")}).`} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--neg)", color: "var(--panel)" }}>
                             🚫 SANCIONADA
                           </span>
                         )}
                         {qa?.blacklisted && (
-                          <span title="Esta dirección está en la lista negra de stablecoins (USDT/USDC congelado)." className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>
+                          <span title="Esta dirección está en la lista negra de stablecoins (USDT/USDC congelado)." className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--neg)", color: "var(--panel)" }}>
                             🚫 LISTA NEGRA
                           </span>
                         )}
+                        </div>
                       </td>
                       <td className="p-2">
                         <div className="flex items-center gap-1">

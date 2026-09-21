@@ -72,6 +72,7 @@ export default function ColdVault() {
   const [diagRunning, setDiagRunning] = useState(false);
 
   const [quickAudit, setQuickAudit] = useState<Record<string, { sanctioned: boolean; sanctionLists: string[]; blacklisted: boolean }>>({});
+  const [showSuspicious, setShowSuspicious] = useState(false);
   const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "fee" | "suspicious">("all");
 
   // --- planificador de transferencias (multi-tramo, con monto objetivo y transferencia de prueba) ---
@@ -655,8 +656,14 @@ export default function ColdVault() {
     if (effectiveIsFee(m)) return estadoFilter === "fee";
     return estadoFilter === "pending" ? isPending(m) : estadoFilter === "classified" ? !isPending(m) : false;
   };
-  const visibleMovements = movements.filter((m) => passesDustFilter(m) && passesDateFilter(m) && passesWalletFilter(m));
-  const dustHiddenCount = movements.filter((m) => passesDateFilter(m) && passesWalletFilter(m)).length - visibleMovements.length;
+  const baseVisibleMovements = movements.filter((m) => passesDustFilter(m) && passesDateFilter(m) && passesWalletFilter(m));
+  // El polvo y el posible fraude ENTRANTES no se mezclan con tus movimientos (embasuran la lista y los totales)
+  // salvo que los pidas: "verlas por separado" (filtro Polvo / fraude) o "incluirlas". Los envíos TUYOS hacia
+  // una dirección parecida a un contacto nunca se ocultan: son lo más grave y hay que verlos siempre.
+  const isHiddenSuspect = (m: Movement) => m.direction === "in" && !isInternalTransfer(m) && !!suspicionFor(m);
+  const suspiciousCount = baseVisibleMovements.filter(isHiddenSuspect).length;
+  const visibleMovements = baseVisibleMovements.filter((m) => showSuspicious || estadoFilter === "suspicious" || !isHiddenSuspect(m));
+  const dustHiddenCount = movements.filter((m) => passesDateFilter(m) && passesWalletFilter(m)).length - baseVisibleMovements.length;
 
   // El flujo real excluye transferencias internas (mover dinero entre tus propias wallets
   // no es entrada ni salida de la tesorería) y separa las comisiones de red.
@@ -1176,7 +1183,7 @@ export default function ColdVault() {
             dirFilter={dirFilter} setDirFilter={setDirFilter} estadoFilter={estadoFilter} setEstadoFilter={setEstadoFilter}
             dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
             minUsd={minUsd} setMinUsd={setMinUsd} hideUnpriced={hideUnpriced} setHideUnpriced={setHideUnpriced}
-            dustHiddenCount={dustHiddenCount}
+            dustHiddenCount={dustHiddenCount} suspiciousCount={suspiciousCount} showSuspicious={showSuspicious} setShowSuspicious={setShowSuspicious}
             exportFiltered={exportFiltered} generateStatement={generateStatement} statementGenerating={statementGenerating}
             flowSummary={flowSummary} visibleMovements={visibleMovements} filteredMovements={filteredMovements} pendingCount={pendingCount}
             showGroupClassifier={showGroupClassifier} setShowGroupClassifier={setShowGroupClassifier}
