@@ -11,7 +11,7 @@ import {
 import ConceptoInput from "./ConceptoInput";
 
 type DirFilter = "all" | "in" | "out";
-type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee";
+type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee" | "suspicious";
 type GroupViewMode = "pending" | "all";
 type GroupBatchEntry = { aliadoId: string; concepto: string; applying: boolean };
 
@@ -27,6 +27,7 @@ export interface MovementsViewProps {
   loadingMoreId: string | null;
   loadMoreForWallet: (w: Wallet) => void;
   isPoisoningSuspect: (addr: string | null) => boolean;
+  suspicionFor: (m: Movement) => { kind: "fraude" | "polvo"; label: string; reason: string; similarTo?: string } | null;
   quickAuditFor: (m: Movement) => { sanctioned: boolean; sanctionLists: string[]; blacklisted: boolean } | undefined;
   runDiagnostics: () => void;
   diagRunning: boolean;
@@ -120,7 +121,7 @@ export interface MovementsViewProps {
 export default function MovementsView(props: MovementsViewProps) {
   const {
     wallets, movements, aliados,
-    movLoading, movErr, loadMovements, cursors, loadingMoreId, loadMoreForWallet, isPoisoningSuspect, quickAuditFor,
+    movLoading, movErr, loadMovements, cursors, loadingMoreId, loadMoreForWallet, isPoisoningSuspect, suspicionFor, quickAuditFor,
     runDiagnostics, diagRunning, diag,
     walletSummary, walletFilter, setWalletFilter,
     newAliadoName, setNewAliadoName, addAliado, selectedAliadoId, setSelectedAliadoId, selectedAliado, deleteAliado,
@@ -505,6 +506,7 @@ export default function MovementsView(props: MovementsViewProps) {
             <option value="classified">✓ Clasificados</option>
             <option value="internal">↔ Internas</option>
             <option value="fee">💳 Comisiones de red</option>
+            <option value="suspicious">🚩 Polvo / posible fraude</option>
           </select>
           <select className="cv-select" value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)}>
             <option value="all">Todas las wallets</option>
@@ -745,8 +747,9 @@ export default function MovementsView(props: MovementsViewProps) {
                       <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)} ↗</a>
                     </div>
 
-                    {(!m.verified || isPoisoningSuspect(m.counterparty) || qa?.sanctioned || qa?.blacklisted || m.otherCount > 0) && (
+                    {(!m.verified || isPoisoningSuspect(m.counterparty) || suspicionFor(m) || qa?.sanctioned || qa?.blacklisted || m.otherCount > 0) && (
                       <div className="flex flex-wrap gap-1 mb-2">
+                        {suspicionFor(m) && <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>{suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}</span>}
                         {!m.verified && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>⚠ NO VERIFICADO</span>}
                         {isPoisoningSuspect(m.counterparty) && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--amber)", color: "var(--ink)" }}>⚠ similar a otra</span>}
                         {qa?.sanctioned && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>🚫 SANCIONADA</span>}
@@ -834,6 +837,11 @@ export default function MovementsView(props: MovementsViewProps) {
                       <td className="p-2">
                         <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
                         {m.otherCount > 0 && <span className="text-[10.5px]" style={{ color: "var(--dim)" }}> +{m.otherCount} más</span>}
+                        {suspicionFor(m) && (
+                          <span title={suspicionFor(m)!.reason} className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>
+                            {suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}
+                          </span>
+                        )}
                         {isPoisoningSuspect(m.counterparty) && (
                           <span title="Esta dirección se parece mucho a otra que has usado, pero es distinta — posible address poisoning. No la copies de aquí, verifica siempre en el explorador." className="ml-1.5 text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--amber)", color: "var(--ink)" }}>
                             ⚠ similar a otra
@@ -925,7 +933,7 @@ export default function MovementsView(props: MovementsViewProps) {
               <div>
                 <div className="cv-eyebrow mb-1.5">Estado</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {([["all", "Cualquiera"], ["pending", "⏳ Pendientes"], ["classified", "✓ Clasificados"], ["internal", "↔ Internas"], ["fee", "💳 Comisiones"]] as const).map(([v, l]) => (
+                  {([["all", "Cualquiera"], ["pending", "⏳ Pendientes"], ["classified", "✓ Clasificados"], ["internal", "↔ Internas"], ["fee", "💳 Comisiones"], ["suspicious", "🚩 Polvo / fraude"]] as const).map(([v, l]) => (
                     <button key={v} onClick={() => setEstadoFilter(v as any)}
                       className="rounded-xl py-2.5 text-[13px] font-medium"
                       style={{ background: estadoFilter === v ? "var(--ink)" : "var(--panel2)", color: estadoFilter === v ? "var(--panel)" : "var(--ink)", border: "none" }}>

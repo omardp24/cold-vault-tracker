@@ -17,6 +17,7 @@ import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart"
 import MovementsView from "./coldvault/MovementsView";
 import TransferView, { XferLeg } from "./coldvault/TransferView";
 import { buildStatementData } from "@/lib/statementAggregation";
+import { assessSuspicion, buildKnownIndex } from "@/lib/suspicious";
 
 export default function ColdVault() {
   const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "users">("portfolio");
@@ -56,7 +57,7 @@ export default function ColdVault() {
   const [cursors, setCursors] = useState<Record<string, string | null>>({}); // walletId -> nextCursor
   const [loadingMoreId, setLoadingMoreId] = useState<string | null>(null);
   const [newAliadoName, setNewAliadoName] = useState("");
-  const [dirFilter, setDirFilter] = useState<"all" | "in" | "out">("out");
+  const [dirFilter, setDirFilter] = useState<"all" | "in" | "out">("all");
   const [searchText, setSearchText] = useState("");
   const [minUsd, setMinUsd] = useState("1");
   const [hideUnpriced, setHideUnpriced] = useState(true);
@@ -71,7 +72,7 @@ export default function ColdVault() {
   const [diagRunning, setDiagRunning] = useState(false);
 
   const [quickAudit, setQuickAudit] = useState<Record<string, { sanctioned: boolean; sanctionLists: string[]; blacklisted: boolean }>>({});
-  const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "fee">("all");
+  const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "fee" | "suspicious">("all");
 
   // --- planificador de transferencias (multi-tramo, con monto objetivo y transferencia de prueba) ---
   const [xferTargetAmount, setXferTargetAmount] = useState("");
@@ -460,7 +461,8 @@ export default function ColdVault() {
   const effectiveConcepto = (m: Movement) => classifications[m.key]?.concepto ?? "";
   const effectiveIsFee = (m: Movement) => !!classifications[m.key]?.isFee;
   const isInternalTransfer = (m: Movement) => !!findOwnWallet(m.chain, m.counterparty);
-  const isPending = (m: Movement) => !isInternalTransfer(m) && !effectiveIsFee(m) && (!effectiveAliadoId(m) || !effectiveConcepto(m).trim());
+  // El polvo y el posible fraude no cuentan como "pendientes por clasificar": no hay nada que clasificar, hay que ignorarlos o verificarlos.
+  const isPending = (m: Movement) => !isInternalTransfer(m) && !effectiveIsFee(m) && !suspicionFor(m) && (!effectiveAliadoId(m) || !effectiveConcepto(m).trim());
 
   // Los guardados de una misma clave se encolan (así uno viejo nunca pisa a uno nuevo), se reintentan
   // si el servidor falla, y si al final no se logra guardar se avisa — antes el resultado se ignoraba
@@ -613,6 +615,25 @@ export default function ColdVault() {
   })();
   const isPoisoningSuspect = (addr: string | null) => !!addr && poisoningGroups.has(addr.toLowerCase());
 
+  // Polvo (dust) y posible fraude por envenenamiento de direcciones — reglas en lib/suspicious.ts.
+  const suspicionIndexes = (() => {
+    const contacts = [
+      ...wallets.map((w) => ({ chain: w.chain as string, address: w.address })),
+      ...aliados.flatMap((a) => a.addresses.map((x) => ({ chain: x.chain as string, address: x.address }))),
+    ];
+    const paid = movements.filter((m) => m.direction === "out" && m.counterparty).map((m) => ({ chain: m.chain as string, address: m.counterparty! }));
+    return { contacts: buildKnownIndex(contacts), seen: buildKnownIndex([...contacts, ...paid]) };
+  })();
+  const suspicionFor = (m: Movement) => {
+    // Lo que ya clasificaste con un aliado es decisión tuya: no se vuelve a marcar como sospechoso.
+    if (classifications[m.key]?.aliadoId && m.direction === "in") return null;
+    const px = safePrice(m);
+    return assessSuspicion(
+      { chain: m.chain, direction: m.direction, counterparty: m.counterparty, usd: px != null ? px * m.amount : null, verified: m.verified },
+      suspicionIndexes.contacts, suspicionIndexes.seen,
+    );
+  };
+
   const passesDustFilter = (m: Movement) => {
     const px = safePrice(m);
     if (px === undefined || px === null) return !hideUnpriced;
@@ -629,6 +650,7 @@ export default function ColdVault() {
   const passesWalletFilter = (m: any) => walletFilter === "all" || m.walletId === walletFilter;
   const passesEstadoFilter = (m: Movement) => {
     if (estadoFilter === "all") return true;
+    if (estadoFilter === "suspicious") return !isInternalTransfer(m) && !!suspicionFor(m);
     if (isInternalTransfer(m)) return estadoFilter === "internal";
     if (effectiveIsFee(m)) return estadoFilter === "fee";
     return estadoFilter === "pending" ? isPending(m) : estadoFilter === "classified" ? !isPending(m) : false;
@@ -1137,7 +1159,7 @@ export default function ColdVault() {
             wallets={wallets} movements={movements} aliados={aliados}
             movLoading={movLoading} movErr={movErr} loadMovements={loadMovements}
             cursors={cursors} loadingMoreId={loadingMoreId} loadMoreForWallet={loadMoreForWallet}
-            isPoisoningSuspect={isPoisoningSuspect} quickAuditFor={quickAuditFor}
+            isPoisoningSuspect={isPoisoningSuspect} suspicionFor={suspicionFor} quickAuditFor={quickAuditFor}
             runDiagnostics={runDiagnostics} diagRunning={diagRunning} diag={diag}
             walletSummary={walletSummary} walletFilter={walletFilter} setWalletFilter={setWalletFilter}
             newAliadoName={newAliadoName} setNewAliadoName={setNewAliadoName} addAliado={addAliado}

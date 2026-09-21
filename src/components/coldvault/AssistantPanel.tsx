@@ -7,13 +7,13 @@ interface Msg { role: "user" | "assistant"; text: string; tools?: string[]; erro
 
 const TOOL_LABEL: Record<string, string> = {
   resumen_portafolio: "portafolio", listar_aliados: "aliados", listar_movimientos: "movimientos",
-  auditar_direccion: "auditoría de dirección", auditar_pendientes: "auditoría de pendientes",
+  detectar_polvo_y_fraude: "polvo y fraude", auditar_direccion: "auditoría de dirección", auditar_pendientes: "auditoría de pendientes",
 };
 
 const QUICK = [
   "Audita mis movimientos pendientes",
   "¿Cómo va el portafolio?",
-  "¿Hay direcciones o tokens sospechosos?",
+  "Detecta transferencias de polvo y fraudes",
   "¿Cómo exporto el estado de cuenta?",
 ];
 
@@ -51,6 +51,13 @@ export default function AssistantPanel() {
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy, open]);
 
   const send = async (raw: string) => {
@@ -85,10 +92,17 @@ export default function AssistantPanel() {
       )}
 
       {open && (
-        <div
-          className="fixed z-50 inset-0 md:inset-auto md:right-6 md:bottom-6 md:w-[400px] md:h-[600px] md:max-h-[calc(100vh-3rem)] flex flex-col md:rounded-2xl overflow-hidden"
-          style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 12px 40px rgba(0,0,0,.35)", color: "var(--ink)" }}
-        >
+        <>
+          {/* Fondo: tocar afuera cierra (en móvil el asistente es una hoja tipo pop-up, no pantalla completa) */}
+          <div className="fixed inset-0 z-40 md:hidden" style={{ background: "rgba(0,0,0,.55)" }} onClick={() => setOpen(false)} />
+          <div
+            role="dialog" aria-label="Asistente de IA"
+            className="fixed z-50 inset-x-0 bottom-0 h-[80dvh] rounded-t-3xl md:inset-x-auto md:right-6 md:bottom-6 md:w-[400px] md:h-[600px] md:max-h-[calc(100vh-3rem)] md:rounded-2xl flex flex-col overflow-hidden"
+            style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 -8px 40px rgba(0,0,0,.4)", color: "var(--ink)" }}
+          >
+          <div className="md:hidden flex justify-center pt-2" onClick={() => setOpen(false)}>
+            <div className="w-10 h-1 rounded-full" style={{ background: "var(--line)" }} />
+          </div>
           <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--line)", background: "var(--panel2)" }}>
             <div className="flex items-center gap-2">
               <Sparkles size={16} style={{ color: "var(--accent)" }} />
@@ -141,7 +155,7 @@ export default function AssistantPanel() {
             <div ref={endRef} />
           </div>
 
-          <form className="flex items-end gap-2 p-3 border-t" style={{ borderColor: "var(--line)" }} onSubmit={(e) => { e.preventDefault(); void send(input); }}>
+          <form className="flex items-end gap-2 p-3 border-t" style={{ borderColor: "var(--line)", paddingBottom: "max(12px, env(safe-area-inset-bottom))" }} onSubmit={(e) => { e.preventDefault(); void send(input); }}>
             <textarea
               className="cv-input flex-1 resize-none py-2 px-3 text-[13px]" rows={1} maxLength={2000}
               placeholder="Pregunta algo o pide una auditoría…" value={input}
@@ -150,7 +164,8 @@ export default function AssistantPanel() {
             />
             <button type="submit" disabled={busy || !input.trim()} className="cv-btn flex-shrink-0" style={{ padding: "10px 12px" }}><Send size={15} /></button>
           </form>
-        </div>
+          </div>
+        </>
       )}
     </>
   );
