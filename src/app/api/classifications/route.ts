@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { readDb, updateDb } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/auditLog";
+import { migrateLegacyClassificationKeys } from "@/lib/classificationKeys";
 
 export async function GET() {
   const auth = await requireAuth(); if (!auth.ok) return auth.res as any;
-  const db = await readDb();
+  let db = await readDb();
+  if (db.classificationKeysVersion !== 2) {
+    await updateDb((d) => {
+      if (d.classificationKeysVersion === 2) return;
+      d.classifications = migrateLegacyClassificationKeys(d.classifications);
+      d.classificationKeysVersion = 2;
+    });
+    db = await readDb();
+  }
   return NextResponse.json(db.classifications);
 }
 

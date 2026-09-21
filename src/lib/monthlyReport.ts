@@ -8,11 +8,18 @@ import { generateStatementExcel } from "./statementExcel";
 import { generateStatementPdf } from "./statementPdf";
 import { sendMail } from "./mailer";
 
-function previousMonthRange(): { from: Date; to: Date } {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-  return { from, to };
+// El mes se calcula en hora de Venezuela (UTC-4, sin horario de verano), no en la del servidor (UTC en Vercel):
+// si no, un movimiento de las 9 p. m. del último día del mes caía en el mes siguiente.
+const VE_OFFSET_HOURS = 4;
+function previousMonthRange(): { from: Date; to: Date; fromDay: string; toDay: string } {
+  const veNow = new Date(Date.now() - VE_OFFSET_HOURS * 3600_000); // "reloj de pared" de Caracas leído con getUTC*
+  const y = veNow.getUTCFullYear(), m = veNow.getUTCMonth();
+  const from = new Date(Date.UTC(y, m - 1, 1, VE_OFFSET_HOURS));
+  const to = new Date(Date.UTC(y, m, 1, VE_OFFSET_HOURS) - 1);
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  const fromDay = day(new Date(Date.UTC(y, m - 1, 1)));
+  const toDay = day(new Date(Date.UTC(y, m, 0))); // día 0 del mes actual = último día del mes anterior
+  return { from, to, fromDay, toDay };
 }
 
 /**
@@ -41,7 +48,7 @@ export async function sendMonthlyReports(): Promise<void> {
   const db = await readDb();
   if (db.users.length === 0) return;
 
-  const { from, to } = previousMonthRange();
+  const { from, to, fromDay, toDay } = previousMonthRange();
   const fromMs = from.getTime();
   const toMs = to.getTime();
 
@@ -72,13 +79,13 @@ export async function sendMonthlyReports(): Promise<void> {
     total: breakdown.total,
     incompleteWallets,
     generatedBy: "Reporte mensual automático",
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: to.toISOString().slice(0, 10),
+    dateFrom: fromDay,
+    dateTo: toDay,
   });
 
   const [pdf, excel] = await Promise.all([generateStatementPdf(statementData), generateStatementExcel(statementData)]);
-  const monthLabel = from.toLocaleDateString("es-VE", { month: "long", year: "numeric" });
-  const fileTag = from.toISOString().slice(0, 7);
+  const monthLabel = new Date(`${fromDay}T12:00:00Z`).toLocaleDateString("es-VE", { month: "long", year: "numeric", timeZone: "UTC" });
+  const fileTag = fromDay.slice(0, 7);
 
   for (const user of db.users) {
     await sendMail({

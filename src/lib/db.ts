@@ -107,6 +107,7 @@ export interface DB {
   sessions: Record<string, Session>; // token -> session
   invites: Invite[];
   pushSubscriptions: PushSubscriptionRecord[]; // conjunto chico y acotado, como wallets/users — no una serie de tiempo
+  classificationKeysVersion?: number; // 2 = claves estables por txid (ver lib/classificationKeys.ts)
 }
 
 const EMPTY_DB: DB = { wallets: [], manual: [], aliados: [], classifications: {}, plans: [], users: [], sessions: {}, invites: [], pushSubscriptions: [] };

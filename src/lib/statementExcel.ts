@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import type { StatementInput } from "./statementPdf";
+import { caracasCalendarDate, fmtDateTime } from "./format";
 
 const NAVY = "FF012D37";
 const ORANGE = "FFF77B1C";
@@ -36,7 +37,7 @@ export async function generateStatementExcel(input: StatementInput): Promise<Buf
   summary.getCell("A2").font = { size: 10, color: { argb: "FF666666" } };
 
   summary.addRow([]);
-  summary.addRow(["Generado", new Date(input.generatedAt).toLocaleString("es-VE")]);
+  summary.addRow(["Generado", fmtDateTime(input.generatedAt)]);
   summary.addRow(["Por", input.generatedBy]);
   if (input.dateFrom || input.dateTo) summary.addRow(["Período", `${input.dateFrom || "inicio"} — ${input.dateTo || "hoy"}`]);
   summary.addRow([]);
@@ -93,7 +94,7 @@ export async function generateStatementExcel(input: StatementInput): Promise<Buf
   headerRow(movs, ["Fecha", "Wallet", "Red", "Tipo", "Activo", "Monto", "Contraparte", "Aliado", "Concepto"]);
   input.movements.forEach((m) => {
     const row = movs.addRow([
-      m.date ? new Date(m.date) : "pendiente",
+      m.date ? caracasCalendarDate(m.date) : "pendiente",
       m.walletLabel, m.chain, m.direction === "out" ? "Salida" : "Entrada",
       m.asset, m.amount, m.counterparty || "", m.aliado, m.concepto,
     ]);

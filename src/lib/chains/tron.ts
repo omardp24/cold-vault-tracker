@@ -55,7 +55,12 @@ export async function getTronHistory(address: string, cursor?: string | null): P
   const d = await res.json();
   if (d.success === false) throw new Error(d.error || "TronGrid: respuesta inválida");
   const out: Movement[] = [];
-  (d.data || []).forEach((t: any, idx: number) => {
+  // La clave NO puede usar la posición en la lista (idx): llega un movimiento nuevo y todas las
+  // posiciones se corren, dejando huérfanos los conceptos ya guardados. Se numeran solo las
+  // transferencias repetidas de una misma tx, que sí tienen un orden estable.
+  const seenInTx: Record<string, number> = {};
+  (d.data || []).forEach((t: any) => {
+    const occ = (seenInTx[t.transaction_id] = (seenInTx[t.transaction_id] ?? -1) + 1);
     const decimals = parseInt(t.token_info?.decimals ?? 6, 10);
     const amount = parseFloat(t.value || 0) / Math.pow(10, decimals);
     const direction = t.from?.toLowerCase() === address.toLowerCase() ? "out" : "in";
@@ -67,7 +72,7 @@ export async function getTronHistory(address: string, cursor?: string | null): P
     const claimsKnownSymbol = ["USDT", "USDC"].includes(symbol.toUpperCase());
     const verified = !claimsKnownSymbol || !contract ? true : !!known && known.symbol === symbol.toUpperCase();
     out.push({
-      key: `TRON-${t.transaction_id}-${idx}`,
+      key: `TRON-${t.transaction_id}-${occ}`,
       chain: "TRON",
       txid: t.transaction_id,
       date: t.block_timestamp || null,

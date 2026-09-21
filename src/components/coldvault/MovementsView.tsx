@@ -8,6 +8,7 @@ import {
   Aliado, CHAIN_LABEL, ChainBadge, Chain, Movement, Wallet,
   fmtAmt, fmtDate, fmtUSD, shortAddr,
 } from "./shared";
+import ConceptoInput from "./ConceptoInput";
 
 type DirFilter = "all" | "in" | "out";
 type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee";
@@ -112,7 +113,7 @@ export interface MovementsViewProps {
   isInternalTransfer: (m: Movement) => boolean;
   isPending: (m: Movement) => boolean;
   findOwnWallet: (chain: Chain, addr: string | null) => Wallet | undefined;
-  saveClassification: (key: string, patch: { aliadoId?: string | null; concepto?: string; isFee?: boolean }) => void;
+  saveClassification: (key: string, patch: { aliadoId?: string | null; concepto?: string; isFee?: boolean }) => Promise<boolean>;
   handleAliadoSelect: (m: Movement, value: string) => void;
 }
 
@@ -346,19 +347,36 @@ export default function MovementsView(props: MovementsViewProps) {
                 <div className="text-[12px]" style={{ color: "var(--dim)" }}>Sin movimientos todavía.</div>
               ) : (
                 <div className="cv-scroll-x">
-                <table className="w-full border-collapse" style={{ minWidth: 380 }}>
+                <table className="w-full border-collapse" style={{ minWidth: 640 }}>
                   <thead><tr className="text-left text-[11px] uppercase" style={{ color: "var(--dim)" }}>
-                    <th className="p-1.5">Fecha</th><th className="p-1.5">Wallet</th><th className="p-1.5">Monto</th><th className="p-1.5">Concepto</th>
+                    <th className="p-1.5">Fecha</th><th className="p-1.5">Wallet</th><th className="p-1.5">Monto</th><th className="p-1.5">Contraparte</th><th className="p-1.5">Concepto</th><th className="p-1.5">Aliado</th>
                   </tr></thead>
                   <tbody>
                     {selectedAliadoMovements.map((m) => (
-                      <tr key={m.key} className="border-t" style={{ borderColor: "var(--line)" }}>
-                        <td className="p-1.5 text-xs" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
+                      <tr key={`${m.key}:${(m as any).walletId}`} className="border-t align-top" style={{ borderColor: "var(--line)" }}>
+                        <td className="p-1.5 text-xs whitespace-nowrap" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
                         <td className="p-1.5 text-xs">{m.walletLabel}</td>
-                        <td className="p-1.5 font-mono text-xs" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
+                        <td className="p-1.5 font-mono text-xs whitespace-nowrap" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
                           {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}{!m.verified && " ⚠"}
                         </td>
-                        <td className="p-1.5 text-xs" style={{ color: "var(--dim)" }}>{effectiveConcepto(m) || "—"}</td>
+                        <td className="p-1.5">
+                          <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
+                        </td>
+                        <td className="p-1.5">
+                          <ConceptoInput
+                            className="cv-input w-full min-w-[140px] py-1 px-2"
+                            placeholder="ej. compra insumos"
+                            value={effectiveConcepto(m)}
+                            onSave={(concepto) => saveClassification(m.key, { concepto })}
+                          />
+                        </td>
+                        <td className="p-1.5">
+                          <select className="cv-select" value={effectiveAliadoId(m) || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)}>
+                            <option value="">Sin clasificar</option>
+                            {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            <option value="__new__">+ Nuevo aliado…</option>
+                          </select>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -644,7 +662,7 @@ export default function MovementsView(props: MovementsViewProps) {
                           </thead>
                           <tbody>
                             {g.movements.map((m) => (
-                              <tr key={m.key} style={{ borderTop: "1px solid var(--line)" }}>
+                              <tr key={`${m.key}:${(m as any).walletId}`} style={{ borderTop: "1px solid var(--line)" }}>
                                 <td className="text-[11px] p-1.5" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
                                 <td className="text-[11px] p-1.5 font-medium">{m.walletLabel}</td>
                                 <td className="text-[11px] p-1.5 text-right font-mono" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
@@ -703,7 +721,7 @@ export default function MovementsView(props: MovementsViewProps) {
                 const qa = quickAuditFor(m);
                 const pending = isPending(m);
                 return (
-                  <div key={m.key} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
+                  <div key={`${m.key}:${(m as any).walletId}`} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="flex items-center gap-1.5 text-[11px] min-w-0" style={{ color: "var(--dim)" }}>
                         <ChainBadge chain={m.chain} size={16} />
@@ -749,12 +767,12 @@ export default function MovementsView(props: MovementsViewProps) {
                     ) : (
                       <div className="flex flex-col gap-1.5">
                         <div className="flex gap-1.5">
-                          <input
+                          <ConceptoInput
                             key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
-                            className="cv-input flex-1 py-2 px-2.5 text-sm"
+                            className="cv-input w-full py-2 px-2.5 text-sm"
                             placeholder="Concepto — ej. compra insumos"
-                            defaultValue={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
-                            onBlur={(e) => saveClassification(m.key, { concepto: e.target.value })}
+                            value={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
+                            onSave={(concepto) => saveClassification(m.key, { concepto })}
                           />
                           <button
                             className="cv-x flex-shrink-0" title="Sugerir con IA" disabled={suggesting === m.key}
@@ -791,7 +809,7 @@ export default function MovementsView(props: MovementsViewProps) {
                   const qa = quickAuditFor(m);
                   const pending = isPending(m);
                   return (
-                    <tr key={m.key} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
+                    <tr key={`${m.key}:${(m as any).walletId}`} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
                       <td className="p-2">
                         {isInternalTransfer(m) ? (
                           <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "var(--panel2)", color: "var(--accent)" }}>interna</span>
@@ -834,12 +852,12 @@ export default function MovementsView(props: MovementsViewProps) {
                       </td>
                       <td className="p-2">
                         <div className="flex items-center gap-1">
-                          <input
+                          <ConceptoInput
                             key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
-                            className="cv-input w-[120px] py-1 px-2"
+                            className="cv-input w-[140px] py-1 px-2"
                             placeholder="ej. compra insumos"
-                            defaultValue={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
-                            onBlur={(e) => saveClassification(m.key, { concepto: e.target.value })}
+                            value={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
+                            onSave={(concepto) => saveClassification(m.key, { concepto })}
                           />
                           {!isInternalTransfer(m) && !effectiveIsFee(m) && (
                             <button className="cv-x flex-shrink-0" title="Sugerir con IA" disabled={suggesting === m.key} onClick={() => suggestForMovement(m)}>

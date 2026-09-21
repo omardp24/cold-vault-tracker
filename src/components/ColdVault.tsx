@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftRight, LineChart, LogOut, Moon, ShieldCheck, Send, Sun, Users, Wallet as WalletIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Send, Sun, Users, Wallet as WalletIcon } from "lucide-react";
 import {
   Aliado, Chain, Classification, Holding, ManualHolding, Movement, Wallet,
   CHAIN_COLORS, CHAIN_LABEL, FIXED_STABLECOINS, SYMBOL_COINGECKO,
@@ -11,15 +11,15 @@ import AuditTab from "./coldvault/AuditTab";
 import UsersTab from "./coldvault/UsersTab";
 import GlobalSearch from "./coldvault/GlobalSearch";
 import PushBell from "./coldvault/PushBell";
+import AssistantPanel from "./coldvault/AssistantPanel";
 import PortfolioView from "./coldvault/PortfolioView";
 import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart";
 import MovementsView from "./coldvault/MovementsView";
 import TransferView, { XferLeg } from "./coldvault/TransferView";
-import MarketView from "./coldvault/MarketView";
 import { buildStatementData } from "@/lib/statementAggregation";
 
 export default function ColdVault() {
-  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "market" | "users">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "transfer" | "users">("portfolio");
   const [loaded, setLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string; role: "owner" | "member" } | null>(null);
 
@@ -426,17 +426,16 @@ export default function ColdVault() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || String(res.status));
       const older = (d.movements as Movement[]).map((m) => ({ ...m, walletLabel: w.label, walletId: w.id } as any));
-      let addedCount = 0;
+      const idOf = (m: any) => `${m.walletId}|${m.key}`;
+      const existingIds = new Set(movements.map(idOf));
+      const nuevos = older.filter((m: any) => !existingIds.has(idOf(m)));
       setMovements((prev) => {
-        const existingKeys = new Set(prev.map((m) => m.key));
-        const nuevos = older.filter((m: any) => !existingKeys.has(m.key));
-        addedCount = nuevos.length;
-        const merged = [...prev, ...nuevos];
-        return merged.sort((a, b) => (b.date || 0) - (a.date || 0));
+        const ids = new Set(prev.map(idOf));
+        return [...prev, ...nuevos.filter((m: any) => !ids.has(idOf(m)))].sort((a, b) => (b.date || 0) - (a.date || 0));
       });
       // Protección contra bucle: si la página no trajo nada nuevo o el cursor no avanzó,
       // damos el historial por terminado en vez de dejar el botón activo indefinidamente.
-      const stalled = addedCount === 0 || d.nextCursor === cursor;
+      const stalled = nuevos.length === 0 || d.nextCursor === cursor;
       setCursors((c) => ({ ...c, [w.id]: stalled ? null : d.nextCursor }));
       runQuickAudit(older);
     } catch (e: any) {
@@ -463,12 +462,44 @@ export default function ColdVault() {
   const isInternalTransfer = (m: Movement) => !!findOwnWallet(m.chain, m.counterparty);
   const isPending = (m: Movement) => !isInternalTransfer(m) && !effectiveIsFee(m) && (!effectiveAliadoId(m) || !effectiveConcepto(m).trim());
 
-  const saveClassification = async (key: string, patch: Partial<Classification>) => {
+  // Los guardados de una misma clave se encolan (así uno viejo nunca pisa a uno nuevo), se reintentan
+  // si el servidor falla, y si al final no se logra guardar se avisa — antes el resultado se ignoraba
+  // y el concepto parecía guardado en pantalla pero se perdía al recargar.
+  const saveQueue = useRef<Record<string, Promise<boolean>>>({});
+  const pendingSaves = useRef(0);
+  const [saveError, setSaveError] = useState("");
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => { if (pendingSaves.current > 0) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
+  const saveClassification = async (key: string, patch: Partial<Classification>): Promise<boolean> => {
     setClassifications((c) => ({ ...c, [key]: { aliadoId: c[key]?.aliadoId ?? null, concepto: c[key]?.concepto ?? "", ...patch } }));
-    await fetch("/api/classifications", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, ...patch }),
-    });
+    const attemptSave = async (): Promise<boolean> => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await fetch("/api/classifications", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, ...patch }),
+          });
+          if (res.ok) return true;
+          if (res.status === 401) { setSaveError("Tu sesión expiró — vuelve a iniciar sesión para guardar."); return false; }
+          if (res.status < 500 && res.status !== 429) break; // error del pedido: reintentar no ayuda
+        } catch { /* sin red: se reintenta */ }
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+      return false;
+    };
+    pendingSaves.current++;
+    const prev = saveQueue.current[key] ?? Promise.resolve(true);
+    const run = prev.then(attemptSave, attemptSave);
+    saveQueue.current[key] = run;
+    const ok = await run;
+    pendingSaves.current--;
+    if (ok) setSaveError((e) => (e.startsWith("Tu sesión") ? e : ""));
+    else setSaveError((e) => e || "No se pudo guardar un cambio. Revisa tu conexión y reintenta (el campo queda marcado en rojo).");
+    return ok;
   };
 
   const assignAliado = async (m: Movement, aliadoId: string | null, remember: boolean) => {
@@ -932,13 +963,12 @@ export default function ColdVault() {
 
   const { theme, toggleTheme } = useTheme();
 
-  type TabId = "portfolio" | "movements" | "audit" | "transfer" | "market" | "users";
+  type TabId = "portfolio" | "movements" | "audit" | "transfer" | "users";
   const NAV_ITEMS: { id: TabId; label: string; Icon: any; badge?: number }[] = [
     { id: "portfolio", label: "Portafolio", Icon: WalletIcon },
     { id: "movements", label: "Movimientos", Icon: ArrowLeftRight, badge: pendingCount || undefined },
     { id: "audit", label: "Auditoría", Icon: ShieldCheck },
     { id: "transfer", label: "Transferir", Icon: Send },
-    { id: "market", label: "Mercado", Icon: LineChart },
     ...(currentUser?.role === "owner" ? [{ id: "users" as const, label: "Usuarios", Icon: Users }] : []),
   ];
   const SidebarNavBtn = ({ id, label, Icon, badge }: { id: TabId; label: string; Icon: any; badge?: number }) => {
@@ -1077,6 +1107,12 @@ export default function ColdVault() {
         </div>
 
         <div className="px-3 py-4 sm:px-6 sm:py-6" style={{ color: "var(--ink)" }}>
+        {saveError && (
+          <div className="mb-3 rounded-lg px-3.5 py-2.5 text-[12.5px] flex items-start justify-between gap-3" style={{ background: "rgba(178,58,58,.14)", color: "var(--neg)", border: "1px solid var(--neg)" }}>
+            <span>{saveError}</span>
+            <button className="cv-x flex-shrink-0" onClick={() => setSaveError("")}>✕</button>
+          </div>
+        )}
         {tab === "portfolio" && (
           <PortfolioView
             total={total} wallets={wallets} fetchAll={fetchAll} refreshing={refreshing}
@@ -1137,7 +1173,6 @@ export default function ColdVault() {
 
 
         {tab === "audit" && <AuditTab />}
-        {tab === "market" && <MarketView />}
 
         {tab === "transfer" && (
           <TransferView
@@ -1164,6 +1199,8 @@ export default function ColdVault() {
         </div>
       </div>
     </div>
+
+    <AssistantPanel />
 
     {/* Barra de navegación inferior — solo móvil */}
     <nav className="cv-tabbar md:hidden">

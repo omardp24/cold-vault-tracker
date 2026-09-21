@@ -41,7 +41,10 @@ export async function getEthHistory(address: string, cursor?: string | null): Pr
   const d = await res.json();
   if (d.error) throw new Error(d.error.message || "Ethplorer: respuesta inválida");
   const out: Movement[] = [];
-  (d.operations || []).forEach((op: any, idx: number) => {
+  // Ver el comentario equivalente en tron.ts: la clave no depende de la posición en la lista.
+  const seenInTx: Record<string, number> = {};
+  (d.operations || []).forEach((op: any) => {
+    const occ = (seenInTx[op.transactionHash] = (seenInTx[op.transactionHash] ?? -1) + 1);
     const decimals = op.tokenInfo ? parseInt(op.tokenInfo.decimals || "18", 10) : 18;
     let amount = parseFloat(op.value || 0);
     if (op.tokenInfo) amount = amount / Math.pow(10, decimals);
@@ -49,7 +52,7 @@ export async function getEthHistory(address: string, cursor?: string | null): Pr
     const counterparty = direction === "out" ? op.to : op.from;
     const symbol = op.tokenInfo ? op.tokenInfo.symbol.toUpperCase() : "ETH";
     out.push({
-      key: `ETH-${op.transactionHash}-${idx}`,
+      key: `ETH-${op.transactionHash}-${occ}`,
       chain: "ETH",
       txid: op.transactionHash,
       date: op.timestamp ? op.timestamp * 1000 : null,

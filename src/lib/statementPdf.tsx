@@ -1,6 +1,7 @@
 import path from "path";
 import React from "react";
 import { Document, Page, View, Text, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
+import { fmtDate, fmtDateTime } from "./format";
 
 // Fuentes propias (no las del sistema) para que el PDF coincida con el diseño hecho en Claude
 // Design (modernist-23fe4502…, ver "Formato de exportación estado de cuenta.zip"). Se registran
@@ -81,21 +82,20 @@ function fmtAmt(n: number | null | undefined, d = 6) {
   if (n === null || n === undefined || isNaN(n)) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: d });
 }
-function fmtDate(ms: number | null) {
-  if (!ms) return "pendiente";
-  return new Date(ms).toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
-}
 function shortAddr(a: string | null) {
   return a ? `${a.slice(0, 8)}…${a.slice(-4)}` : "—";
 }
 function periodLabels(dateFrom?: string, dateTo?: string): { big: string; range: string } {
   if (!dateFrom && !dateTo) return { big: "ESTADO DE CUENTA", range: "Todo el historial" };
-  const from = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
-  const to = dateTo ? new Date(`${dateTo}T00:00:00`) : null;
-  const range = `${from ? fmtDate(from.getTime()) : "inicio"} — ${to ? fmtDate(to.getTime()) : "hoy"}`;
-  const lastDayOfMonth = from ? new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate() : 0;
-  const isFullMonth = !!(from && to && from.getDate() === 1 && to.getFullYear() === from.getFullYear() && to.getMonth() === from.getMonth() && to.getDate() === lastDayOfMonth);
-  if (isFullMonth && from) return { big: from.toLocaleDateString("es-VE", { month: "long", year: "numeric" }).toUpperCase(), range };
+  // dateFrom/dateTo son fechas "AAAA-MM-DD" (día calendario de Venezuela): se leen y formatean en UTC
+  // al mediodía para que la zona horaria del servidor no las corra de día.
+  const parse = (d?: string) => (d ? new Date(`${d}T12:00:00Z`) : null);
+  const show = (d: Date) => d.toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  const from = parse(dateFrom), to = parse(dateTo);
+  const range = `${from ? show(from) : "inicio"} — ${to ? show(to) : "hoy"}`;
+  const isFullMonth = !!(from && to && from.getUTCDate() === 1 && to.getUTCFullYear() === from.getUTCFullYear() && to.getUTCMonth() === from.getUTCMonth()
+    && to.getUTCDate() === new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 0)).getUTCDate());
+  if (isFullMonth && from) return { big: from.toLocaleDateString("es-VE", { month: "long", year: "numeric", timeZone: "UTC" }).toUpperCase(), range };
   return { big: "ESTADO DE CUENTA", range };
 }
 
@@ -179,7 +179,7 @@ export function StatementDocument({ input }: { input: StatementInput }) {
           </View>
           <View style={{ alignItems: "flex-end" }}>
             {[
-              ["Generado", new Date(input.generatedAt).toLocaleString("es-VE")],
+              ["Generado", fmtDateTime(input.generatedAt)],
               ["Por", input.generatedBy],
               ["Wallets", String(input.walletCount)],
               ["Movimientos", String(input.movements.length)],
@@ -197,10 +197,7 @@ export function StatementDocument({ input }: { input: StatementInput }) {
             <Text style={styles.heroLabel}>Valor total del portafolio</Text>
             <Text style={styles.heroValue}>{fmtUSD(total)}</Text>
           </View>
-          <View>
-            <Text style={styles.heroCaption}>Valorado a precio de mercado</Text>
-            <Text style={styles.heroCaptionMono}>{new Date(input.generatedAt).toLocaleString("es-VE")}</Text>
-          </View>
+          <Text style={styles.heroCaption}>Valorado a precio de mercado{"\n"}al momento de generar este documento</Text>
         </View>
 
         {input.incompleteWallets && input.incompleteWallets.length > 0 && (

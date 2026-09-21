@@ -36,13 +36,17 @@ export async function runDailySync(): Promise<DailySyncResult> {
       const page = hist.movements.slice(0, 25); // un vistazo a lo más reciente, no todo el historial
       if (page.length === 0) continue;
 
-      const keys = page.map((m) => m.key);
-      const { data: knownRows } = await supabase.from("notified_movements").select("movement_key").in("movement_key", keys);
-      const known = new Set((knownRows || []).map((r) => r.movement_key));
+      // Las claves de movimientos antes incluían la posición en la lista (ver lib/classificationKeys.ts).
+      // Para no volver a avisar de todo lo ya notificado con el formato viejo, un movimiento también se
+      // considera conocido si ya hay una fila con el mismo `${red}-${txid}-…`, sin importar el sufijo.
+      const baseOf = (k: string) => k.replace(/-\d+$/, "");
+      const orFilter = [`movement_key.in.(${page.map((m) => m.key).join(",")})`, ...page.map((m) => `movement_key.like.${m.chain}-${m.txid}-*`)].join(",");
+      const { data: knownRows } = await supabase.from("notified_movements").select("movement_key").or(orFilter);
+      const known = new Set((knownRows || []).flatMap((r) => [r.movement_key, baseOf(r.movement_key)]));
       const toMark: string[] = [];
 
       for (const m of page) {
-        if (known.has(m.key)) continue;
+        if (known.has(m.key) || known.has(baseOf(m.key))) continue;
         toMark.push(m.key);
 
         const isInternal = !!m.counterparty && db.wallets.some((ow) => ow.chain === m.chain && ow.address.toLowerCase() === m.counterparty!.toLowerCase());
@@ -89,7 +93,8 @@ export async function runDailySync(): Promise<DailySyncResult> {
   }
 
   let monthlyReportsSent = false;
-  if (new Date().getDate() === 1) {
+  // Día del mes en hora de Venezuela (el cron corre a las 06:00 UTC = 02:00 en Caracas).
+  if (new Date(Date.now() - 4 * 3600_000).getUTCDate() === 1) {
     try {
       await sendMonthlyReports();
       monthlyReportsSent = true;

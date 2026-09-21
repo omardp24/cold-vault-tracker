@@ -71,7 +71,7 @@ export default function GlobalSearch({
                 <div>
                   <div className="px-3.5 pt-2.5 pb-1 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--faint)" }}>Movimientos</div>
                   {movementMatches.map((m) => (
-                    <button key={m.key} className="cv-row w-full text-left px-3.5 py-2" onMouseDown={() => pick(() => onSelectMovement(m))}>
+                    <button key={`${m.key}:${(m as any).walletId}`} className="cv-row w-full text-left px-3.5 py-2" onMouseDown={() => pick(() => onSelectMovement(m))}>
                       <div className="text-[12.5px]" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
                         {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
                       </div>
