@@ -5,7 +5,7 @@ import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Sun, Users, Wallet as Wallet
 import {
   Aliado, Chain, Classification, Holding, ManualHolding, Movement, Wallet,
   CHAIN_COLORS, CHAIN_LABEL, FIXED_STABLECOINS, SYMBOL_COINGECKO,
-  fmtAmt, fmtDate, fmtUSD, useTheme,
+  ConfirmModal, PromptModal, fmtAmt, fmtDate, fmtUSD, useTheme,
 } from "./coldvault/shared";
 import AuditTab from "./coldvault/AuditTab";
 import UsersTab from "./coldvault/UsersTab";
@@ -18,7 +18,42 @@ import MovementsView from "./coldvault/MovementsView";
 import { buildStatementData } from "@/lib/statementAggregation";
 import { assessSuspicion, buildKnownIndex } from "@/lib/suspicious";
 
+// Promesa que se resuelve cuando el usuario responde el modal — deja usar los diálogos de
+// aliado/confirmación con await, igual que antes con window.prompt/window.confirm, pero con
+// el estilo de la app en vez del diálogo nativo del navegador (que muestra la URL del sitio).
+function usePromptModal() {
+  const [state, setState] = useState<{ title: string; description?: string; placeholder?: string; confirmLabel?: string } | null>(null);
+  const resolver = useRef<((v: string | null) => void) | null>(null);
+  const ask = (opts: { title: string; description?: string; placeholder?: string; confirmLabel?: string }) =>
+    new Promise<string | null>((resolve) => { resolver.current = resolve; setState(opts); });
+  const resolve = (v: string | null) => { setState(null); resolver.current?.(v); resolver.current = null; };
+  const modal = (
+    <PromptModal
+      open={!!state} title={state?.title || ""} description={state?.description} placeholder={state?.placeholder} confirmLabel={state?.confirmLabel}
+      onCancel={() => resolve(null)} onConfirm={(v) => resolve(v)}
+    />
+  );
+  return { ask, modal };
+}
+
+function useConfirmModal() {
+  const [state, setState] = useState<{ title: string; description?: string; confirmLabel?: string; danger?: boolean } | null>(null);
+  const resolver = useRef<((v: boolean) => void) | null>(null);
+  const ask = (opts: { title: string; description?: string; confirmLabel?: string; danger?: boolean }) =>
+    new Promise<boolean>((resolve) => { resolver.current = resolve; setState(opts); });
+  const resolve = (v: boolean) => { setState(null); resolver.current?.(v); resolver.current = null; };
+  const modal = (
+    <ConfirmModal
+      open={!!state} title={state?.title || ""} description={state?.description} confirmLabel={state?.confirmLabel} danger={state?.danger}
+      onCancel={() => resolve(false)} onConfirm={() => resolve(true)}
+    />
+  );
+  return { ask, modal };
+}
+
 export default function ColdVault() {
+  const { ask: askAliadoName, modal: aliadoPromptModal } = usePromptModal();
+  const { ask: askConfirm, modal: confirmModalEl } = useConfirmModal();
   const [tab, setTab] = useState<"portfolio" | "movements" | "audit" | "users">("portfolio");
   const [loaded, setLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string; role: "owner" | "member" } | null>(null);
@@ -379,11 +414,11 @@ export default function ColdVault() {
 
   const handleAliadoSelect = async (m: Movement, value: string) => {
     if (value === "__new__") {
-      const name = window.prompt("Nombre del nuevo aliado (¿a quién le pagaste?):");
-      if (!name || !name.trim()) return;
+      const name = await askAliadoName({ title: 'Nuevo aliado', description: '¿A quién le pagaste o quién te pagó?', placeholder: 'Nombre del aliado', confirmLabel: 'Crear aliado' });
+      if (!name) return;
       const res = await fetch("/api/aliados", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name }),
       });
       const aliado: Aliado = await res.json();
       setAliados((a) => (a.some((x) => x.id === aliado.id) ? a : [...a, aliado]));
@@ -424,7 +459,7 @@ export default function ColdVault() {
   };
 
   const deleteAliado = async (aliadoId: string) => {
-    if (!window.confirm("¿Eliminar este aliado? Los movimientos ya clasificados con él volverán a quedar pendientes.")) return;
+    if (!(await askConfirm({ title: 'Eliminar aliado', description: 'Los movimientos ya clasificados con él volverán a quedar pendientes.', confirmLabel: 'Eliminar', danger: true }))) return;
     await fetch(`/api/aliados/${aliadoId}`, { method: "DELETE" });
     setAliados((list) => list.filter((a) => a.id !== aliadoId));
     // refleja localmente la limpieza que el servidor hace de las clasificaciones huérfanas
@@ -671,9 +706,9 @@ export default function ColdVault() {
     const state = groupBatchState[group.key] || { aliadoId: "", concepto: "" };
     let aliadoId = state.aliadoId;
     if (aliadoId === "__new__") {
-      const name = window.prompt("Nombre del nuevo aliado (¿a quién le pagaste?):");
-      if (!name || !name.trim()) return;
-      const res = await fetch("/api/aliados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
+      const name = await askAliadoName({ title: 'Nuevo aliado', description: '¿A quién le pagaste o quién te pagó?', placeholder: 'Nombre del aliado', confirmLabel: 'Crear aliado' });
+      if (!name) return;
+      const res = await fetch("/api/aliados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
       const aliado: Aliado = await res.json();
       setAliados((a) => (a.some((x) => x.id === aliado.id) ? a : [...a, aliado]));
       aliadoId = aliado.id;
@@ -1073,6 +1108,9 @@ export default function ColdVault() {
       applied.forEach((a) => { next[a.key] = { aliadoId: a.aliadoId, concepto: a.concepto, isFee: a.isFee }; });
       return next;
     })} />
+
+    {aliadoPromptModal}
+    {confirmModalEl}
 
     {/* Barra de navegación inferior — solo móvil */}
     <nav className="cv-tabbar md:hidden">

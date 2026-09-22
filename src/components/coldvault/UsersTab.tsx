@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Activity, Plus, Users } from "lucide-react";
+import { ConfirmModal } from "./shared";
 
 const ACTION_LABELS: Record<string, (detail: any) => string> = {
   "wallet.create": (d) => `Añadió la wallet "${d?.label}" (${d?.chain})`,
@@ -47,9 +48,11 @@ export default function UsersTab({ currentUser }: { currentUser: { id: string; n
     setGeneratingInvite(false);
   };
 
-  const revokeUser = async (id: string) => {
-    if (!window.confirm("¿Quitarle el acceso a esta persona?")) return;
-    await fetch(`/api/users/${id}`, { method: "DELETE" });
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
+  const confirmRevoke = async () => {
+    if (!revokeTarget) return;
+    await fetch(`/api/users/${revokeTarget.id}`, { method: "DELETE" });
+    setRevokeTarget(null);
     loadUsers();
   };
 
@@ -98,7 +101,7 @@ export default function UsersTab({ currentUser }: { currentUser: { id: string; n
                 <div className="text-[11.5px]" style={{ color: "var(--dim)" }}>{u.email} · {u.role === "owner" ? "propietario" : "miembro"}</div>
               </div>
               {u.id !== currentUser.id && (
-                <button className="cv-btn-ghost" onClick={() => revokeUser(u.id)}>Quitar acceso</button>
+                <button className="cv-btn-ghost" onClick={() => setRevokeTarget({ id: u.id, name: u.name })}>Quitar acceso</button>
               )}
             </div>
           ))}
@@ -125,6 +128,13 @@ export default function UsersTab({ currentUser }: { currentUser: { id: string; n
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!revokeTarget} title="Quitar acceso"
+        description={revokeTarget ? `${revokeTarget.name} ya no podrá entrar a Cold Vault.` : undefined}
+        confirmLabel="Quitar acceso" danger
+        onCancel={() => setRevokeTarget(null)} onConfirm={confirmRevoke}
+      />
     </>
   );
 }

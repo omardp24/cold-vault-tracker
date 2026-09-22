@@ -103,3 +103,79 @@ export function ValueCounter({ value }: { value: number }) {
   }, [value]);
   return <span>{fmtUSD(display)}</span>;
 }
+
+/**
+ * Reemplazo de window.prompt() con el estilo de la app (window.prompt muestra un diálogo del
+ * navegador con la URL del sitio — se ve roto/inseguro). Controlado por el padre: open/value van
+ * por props, el padre decide qué hacer con el valor final vía onConfirm/onCancel.
+ */
+export function PromptModal({
+  open, title, description, placeholder, confirmLabel = "Crear", onCancel, onConfirm,
+}: {
+  open: boolean; title: string; description?: string; placeholder?: string; confirmLabel?: string;
+  onCancel: () => void; onConfirm: (value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    setValue("");
+    const t = setTimeout(() => ref.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => { clearTimeout(t); window.removeEventListener("keydown", onKey); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  if (!open) return null;
+  const submit = () => { const v = value.trim(); if (v) onConfirm(v); };
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="cv-pop absolute inset-0" style={{ background: "rgba(3,15,19,.6)", animationDuration: "0.15s" }} onClick={onCancel} />
+      <div className="cv-pop relative w-full max-w-[360px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 20px 60px rgba(0,0,0,.5)" }}>
+        <div className="font-display text-[15px] font-semibold" style={{ color: "var(--ink)" }}>{title}</div>
+        {description && <div className="text-[12.5px] mt-1" style={{ color: "var(--dim)" }}>{description}</div>}
+        <input
+          ref={ref} className="cv-input w-full mt-3" value={value} placeholder={placeholder}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="cv-btn-ghost" onClick={onCancel}>Cancelar</button>
+          <button className="cv-btn" disabled={!value.trim()} onClick={submit}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Reemplazo de window.confirm() con el mismo criterio que PromptModal — ver su comentario. */
+export function ConfirmModal({
+  open, title, description, confirmLabel = "Confirmar", danger, onCancel, onConfirm,
+}: {
+  open: boolean; title: string; description?: string; confirmLabel?: string; danger?: boolean;
+  onCancel: () => void; onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); if (e.key === "Enter") onConfirm(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onCancel, onConfirm]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="cv-pop absolute inset-0" style={{ background: "rgba(3,15,19,.6)", animationDuration: "0.15s" }} onClick={onCancel} />
+      <div className="cv-pop relative w-full max-w-[360px] rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 20px 60px rgba(0,0,0,.5)" }}>
+        <div className="font-display text-[15px] font-semibold" style={{ color: "var(--ink)" }}>{title}</div>
+        {description && <div className="text-[12.5px] mt-1.5" style={{ color: "var(--dim)" }}>{description}</div>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="cv-btn-ghost" onClick={onCancel}>Cancelar</button>
+          <button
+            className="cv-btn" onClick={onConfirm}
+            style={danger ? { background: "var(--neg)" } : undefined}
+          >{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
