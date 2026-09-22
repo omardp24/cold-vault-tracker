@@ -1,0 +1,21 @@
+name: Vigilar movimientos nuevos
+
+# Vercel Hobby solo deja correr un cron job una vez al día (ver vercel.json / src/app/api/cron/daily-sync),
+# así que el aviso "casi en tiempo real" de operaciones nuevas vive acá: GitHub Actions llama cada 5
+# minutos a un endpoint liviano que solo revisa movimientos y avisa por push de lo que encuentre —
+# no manda nada si no hay nada nuevo. Requiere el secreto de repo CRON_SECRET (mismo valor que la
+# variable de entorno CRON_SECRET en Vercel).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a /api/cron/watch-movements
+        run: |
+          curl -sf -m 55 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://cold-vault-tracker.vercel.app/api/cron/watch-movements"

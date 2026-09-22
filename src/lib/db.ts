@@ -75,6 +75,7 @@ export interface DB {
   invites: Invite[];
   pushSubscriptions: PushSubscriptionRecord[]; // conjunto chico y acotado, como wallets/users — no una serie de tiempo
   classificationKeysVersion?: number; // 2 = claves estables por txid (ver lib/classificationKeys.ts)
+  movementWatchPrimed?: boolean; // true = ya se hizo el barrido inicial de movementWatch.ts (ver su comentario)
 }
 
 const EMPTY_DB: DB = { wallets: [], manual: [], aliados: [], classifications: {}, users: [], sessions: {}, invites: [], pushSubscriptions: [] };
