@@ -9,6 +9,7 @@ import {
   fmtAmt, fmtDate, fmtUSD, shortAddr,
 } from "./shared";
 import ConceptoInput from "./ConceptoInput";
+import TransactionDetailModal, { type TxDetailContext } from "./TransactionDetailModal";
 
 type DirFilter = "all" | "in" | "out";
 type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee" | "suspicious";
@@ -68,6 +69,7 @@ export interface MovementsViewProps {
   selectedAliadoMovements: Movement[];
   exportAliado: (name: string, rows: Movement[]) => void;
   effectiveConcepto: (m: Movement) => string;
+  usdFor: (m: Movement) => number | null;
 
   summaryRows: { id: string; assets: Record<string, number>; count: number; usdApprox: number }[];
   summaryRowsIn: { id: string; assets: Record<string, number>; count: number; usdApprox: number }[];
@@ -143,7 +145,7 @@ export default function MovementsView(props: MovementsViewProps) {
     walletSummary, walletFilter, setWalletFilter,
     newAliadoName, setNewAliadoName, addAliado, selectedAliadoId, setSelectedAliadoId, selectedAliado, deleteAliado,
     selectedAliadoTotals, detailChain, setDetailChain, detailAddr, setDetailAddr, addAddressToAliado, removeAddressFromAliado,
-    selectedAliadoMovements, exportAliado, effectiveConcepto,
+    selectedAliadoMovements, exportAliado, effectiveConcepto, usdFor,
     summaryRows, summaryRowsIn, nameFor, internalTotal, feeTotal,
     searchText, setSearchText, activeFilterCount, showFilterSheet, setShowFilterSheet, showExportSheet, setShowExportSheet,
     dirFilter, setDirFilter, estadoFilter, setEstadoFilter, dateFrom, setDateFrom, dateTo, setDateTo,
@@ -164,6 +166,28 @@ export default function MovementsView(props: MovementsViewProps) {
   // Móvil: los movimientos ya clasificados se muestran en una línea; se abren con «Editar».
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
   const toggleCard = (id: string) => setOpenCards((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  // Resumen de la operación al tocarla (al estilo del detalle que muestra Ledger Live).
+  const [detailMovement, setDetailMovement] = useState<Movement | null>(null);
+  const buildDetailCtx = (m: Movement): TxDetailContext => {
+    const w = wallets.find((x) => x.id === (m as any).walletId) || wallets.find((x) => x.label === m.walletLabel);
+    const internal = isInternalTransfer(m);
+    const sus = suspicionFor(m);
+    const qa = quickAuditFor(m);
+    return {
+      wallet: { id: w?.id || "", label: m.walletLabel || w?.label || "—", address: w?.address || "" },
+      aliadoName: aliados.find((a) => a.id === effectiveAliadoId(m))?.name || null,
+      concepto: effectiveConcepto(m),
+      isFee: effectiveIsFee(m),
+      isInternal: internal,
+      internalWithLabel: internal ? findOwnWallet(m.chain, m.counterparty)?.label || null : null,
+      usd: usdFor(m) !== null ? usdFor(m)! * m.amount : null,
+      suspicion: sus ? { kind: sus.kind, label: sus.label, reason: sus.reason } : null,
+      sanctioned: !!qa?.sanctioned,
+      blacklisted: !!qa?.blacklisted,
+      poisoning: isPoisoningSuspect(m.counterparty),
+    };
+  };
   const suggestForMovement = async (m: Movement) => {
     setSuggesting(m.key);
     try {
@@ -763,7 +787,7 @@ export default function MovementsView(props: MovementsViewProps) {
                 const editing = pending || openCards.has(cardId);
                 return (
                   <div key={cardId} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
-                    <div className="flex items-center justify-between gap-2 mb-2">
+                    <button type="button" className="flex items-center justify-between gap-2 mb-2 w-full text-left" onClick={() => setDetailMovement(m)} title="Ver detalle de la operación">
                       <span className="flex items-center gap-1.5 text-[11px] min-w-0" style={{ color: "var(--dim)" }}>
                         <ChainBadge chain={m.chain} size={16} />
                         <span className="truncate">{fmtDate(m.date)} · {m.walletLabel}</span>
@@ -777,7 +801,7 @@ export default function MovementsView(props: MovementsViewProps) {
                       ) : (
                         <span className="cv-icon-btn text-[10.5px] font-medium rounded-full px-2 py-0.5" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> clasificado</span>
                       )}
-                    </div>
+                    </button>
 
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="font-mono text-base font-semibold" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
@@ -862,7 +886,10 @@ export default function MovementsView(props: MovementsViewProps) {
                   const qa = quickAuditFor(m);
                   const pending = isPending(m);
                   return (
-                    <tr key={`${m.key}:${(m as any).walletId}`} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
+                    <tr
+                      key={`${m.key}:${(m as any).walletId}`} className="cv-row border-t" style={{ borderColor: "var(--line)", cursor: "pointer" }}
+                      onClick={() => setDetailMovement(m)} title="Ver detalle de la operación"
+                    >
                       <td className="p-2">
                         {isInternalTransfer(m) ? (
                           <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "var(--panel2)", color: "var(--accent)" }}>interna</span>
@@ -884,7 +911,7 @@ export default function MovementsView(props: MovementsViewProps) {
                           </span>
                         )}
                       </td>
-                      <td className="p-2 min-w-[150px]">
+                      <td className="p-2 min-w-[150px]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                         <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
                         {m.otherCount > 0 && <span className="text-[10.5px]" style={{ color: "var(--dim)" }}> +{m.otherCount} más</span>}
@@ -910,7 +937,7 @@ export default function MovementsView(props: MovementsViewProps) {
                         )}
                         </div>
                       </td>
-                      <td className="p-2">
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
                           <ConceptoInput
                             key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
@@ -926,7 +953,7 @@ export default function MovementsView(props: MovementsViewProps) {
                           )}
                         </div>
                       </td>
-                      <td className="p-2">
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
                         {isInternalTransfer(m) ? (
                           <span className="text-[11px] rounded-full px-2.5 py-1" style={{ background: "var(--panel2)", color: "var(--accent)", border: "1px solid var(--line)" }}>
                             <ArrowLeftRight size={10} className="inline -mt-0.5 mr-1" />transferencia interna ({findOwnWallet(m.chain, m.counterparty)?.label})
@@ -1065,6 +1092,10 @@ export default function MovementsView(props: MovementsViewProps) {
             </div>
           </div>
         </>
+      )}
+
+      {detailMovement && (
+        <TransactionDetailModal movement={detailMovement} ctx={buildDetailCtx(detailMovement)} onClose={() => setDetailMovement(null)} />
       )}
     </>
   );

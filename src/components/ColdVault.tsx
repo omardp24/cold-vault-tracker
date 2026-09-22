@@ -1066,6 +1066,7 @@ export default function ColdVault() {
             detailChain={detailChain} setDetailChain={setDetailChain} detailAddr={detailAddr} setDetailAddr={setDetailAddr}
             addAddressToAliado={addAddressToAliado} removeAddressFromAliado={removeAddressFromAliado}
             selectedAliadoMovements={selectedAliadoMovements} exportAliado={exportAliado} effectiveConcepto={effectiveConcepto}
+            usdFor={safePrice}
             summaryRows={summaryRows} summaryRowsIn={summaryRowsIn} nameFor={nameFor}
             internalTotal={internalTotal} feeTotal={feeTotal}
             searchText={searchText} setSearchText={setSearchText} activeFilterCount={activeFilterCount}

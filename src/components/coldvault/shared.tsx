@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FIXED_STABLECOINS, SYMBOL_COINGECKO, SYMBOL_LOGO } from "@/lib/assets";
-import { fmtAmt, fmtDate, fmtUSD, shortAddr } from "@/lib/format";
-export { FIXED_STABLECOINS, SYMBOL_COINGECKO, fmtAmt, fmtDate, fmtUSD, shortAddr };
+import { fmtAmt, fmtDate, fmtDateTime, fmtUSD, shortAddr } from "@/lib/format";
+export { FIXED_STABLECOINS, SYMBOL_COINGECKO, fmtAmt, fmtDate, fmtDateTime, fmtUSD, shortAddr };
 
 export type Chain = "BTC" | "ETH" | "TRON";
 
