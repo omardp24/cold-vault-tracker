@@ -106,13 +106,13 @@ export interface StatementMovement {
   asset: string; amount: number; counterparty: string | null; aliado: string; concepto: string;
 }
 export interface StatementAliadoRow { name: string; assets: string; usdApprox: number }
-export interface StatementWalletRow { label: string; chainLabel: string; aliadoCount: number; movCount: number; inUsd: number; outUsd: number; netUsd: number }
+export interface StatementWalletRow { label: string; chainLabel: string; aliadoCount: number; movCount: number; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null }
 export interface StatementDetailMovement {
   date: number | null; direction: "in" | "out"; amount: number; asset: string;
   counterparty: string | null; txid: string; concepto: string; usd: number | null;
 }
 export interface StatementAliadoGroup { name: string; movs: StatementDetailMovement[]; inUsd: number; outUsd: number; netUsd: number; assetsNetLabel: string }
-export interface StatementWalletBlock { label: string; chainLabel: string; address: string; inUsd: number; outUsd: number; netUsd: number; groups: StatementAliadoGroup[] }
+export interface StatementWalletBlock { label: string; chainLabel: string; address: string; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null; groups: StatementAliadoGroup[] }
 export interface StatementFeeRow { date: number | null; walletLabel: string; amount: number; asset: string; usd: number | null; txid: string }
 export interface StatementInternalRow { date: number | null; fromWallet: string; toWallet: string; amount: number; asset: string; txid: string }
 export interface StatementUnclassifiedRow { date: number | null; walletLabel: string; direction: "in" | "out"; amount: number; asset: string; counterparty: string | null; txid: string; usd: number | null }
@@ -281,26 +281,29 @@ export function StatementDocument({ input }: { input: StatementInput }) {
             <Text style={styles.h2}>Resumen por wallet</Text>
             <View style={styles.table}>
               <View style={styles.trHead} fixed>
-                <Text style={[styles.th, { width: "24%" }]}>Wallet</Text>
-                <Text style={[styles.th, { width: "13%" }]}>Red</Text>
-                <Text style={[styles.th, { width: "12%", textAlign: "right" }]}>Aliados</Text>
-                <Text style={[styles.th, { width: "12%", textAlign: "right" }]}>Movs.</Text>
-                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Entradas</Text>
-                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Salidas</Text>
-                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Neto</Text>
+                <Text style={[styles.th, { width: "21%" }]}>Wallet</Text>
+                <Text style={[styles.th, { width: "9%" }]}>Red</Text>
+                <Text style={[styles.th, { width: "9%", textAlign: "right" }]}>Movs.</Text>
+                <Text style={[styles.th, { width: "14%", textAlign: "right" }]}>Entradas</Text>
+                <Text style={[styles.th, { width: "14%", textAlign: "right" }]}>Salidas</Text>
+                <Text style={[styles.th, { width: "16.5%", textAlign: "right" }]}>Saldo anterior</Text>
+                <Text style={[styles.th, { width: "16.5%", textAlign: "right" }]}>Saldo actual</Text>
               </View>
               {input.walletRows.map((w, i) => (
                 <View style={styles.tr} key={i} wrap={false}>
-                  <Text style={[styles.td, { width: "24%", fontWeight: 600, color: NAVY }]}>{w.label}</Text>
-                  <Text style={[styles.td, { width: "13%", color: DIM }]}>{w.chainLabel}</Text>
-                  <Text style={[styles.tdMono, { width: "12%", textAlign: "right" }]}>{w.aliadoCount}</Text>
-                  <Text style={[styles.tdMono, { width: "12%", textAlign: "right" }]}>{w.movCount}</Text>
-                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", color: GREEN }]}>{fmtUSD(w.inUsd)}</Text>
-                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", color: RED }]}>{fmtUSD(w.outUsd)}</Text>
-                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", fontWeight: 600, color: NAVY }]}>{fmtUSD(w.netUsd)}</Text>
+                  <Text style={[styles.td, { width: "21%", fontWeight: 600, color: NAVY }]}>{w.label}</Text>
+                  <Text style={[styles.td, { width: "9%", color: DIM }]}>{w.chainLabel}</Text>
+                  <Text style={[styles.tdMono, { width: "9%", textAlign: "right" }]}>{w.movCount}</Text>
+                  <Text style={[styles.tdMono, { width: "14%", textAlign: "right", color: GREEN }]}>{fmtUSD(w.inUsd)}</Text>
+                  <Text style={[styles.tdMono, { width: "14%", textAlign: "right", color: RED }]}>{fmtUSD(w.outUsd)}</Text>
+                  <Text style={[styles.tdMono, { width: "16.5%", textAlign: "right", color: DIM }]}>{w.openingUsd !== null ? fmtUSD(w.openingUsd) : "sin dato"}</Text>
+                  <Text style={[styles.tdMono, { width: "16.5%", textAlign: "right", fontWeight: 600, color: NAVY }]}>{w.closingUsd !== null ? fmtUSD(w.closingUsd) : fmtUSD(w.netUsd)}</Text>
                 </View>
               ))}
             </View>
+            <Text style={{ fontSize: 7, color: DIM, marginTop: 4 }}>
+              Saldo anterior = saldo actual de la wallet menos el neto del período (ambos al precio de hoy) — es el saldo estimado al inicio del período, no un histórico de precios. Un neto negativo del período no implica que la wallet haya quedado en negativo.
+            </Text>
           </>
         )}
 
@@ -313,17 +316,26 @@ export function StatementDocument({ input }: { input: StatementInput }) {
             </Text>
             {input.walletBlocks.map((w, wi) => (
               <View key={wi} style={{ marginTop: 14 }}>
-                <View style={{ backgroundColor: NAVY, color: "#FFFFFF", padding: "6pt 10pt", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }} wrap={false}>
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
-                    <Text style={{ fontFamily: SORA, fontSize: 10, fontWeight: 700, color: "#FFFFFF" }}>{w.label}</Text>
-                    <Text style={{ fontSize: 6.5, color: AMBER, textTransform: "uppercase", letterSpacing: 1 }}>{w.chainLabel}</Text>
-                    <Text style={{ fontFamily: MONO, fontSize: 7, color: "#8FA9B1" }}>{shortAddr(w.address)}</Text>
+                <View style={{ backgroundColor: NAVY, padding: "6pt 10pt" }} wrap={false}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                      <Text style={{ fontFamily: SORA, fontSize: 10, fontWeight: 700, color: "#FFFFFF" }}>{w.label}</Text>
+                      <Text style={{ fontSize: 6.5, color: AMBER, textTransform: "uppercase", letterSpacing: 1 }}>{w.chainLabel}</Text>
+                      <Text style={{ fontFamily: MONO, fontSize: 7, color: "#8FA9B1" }}>{shortAddr(w.address)}</Text>
+                    </View>
+                    <Text style={{ fontFamily: MONO, fontSize: 8 }}>
+                      <Text style={{ color: "#3ED598" }}>{`+${fmtUSD(w.inUsd)}`}</Text>
+                      <Text style={{ color: "#8FA9B1" }}> · </Text>
+                      <Text style={{ color: "#FF9B8E" }}>{`−${fmtUSD(w.outUsd)}`}</Text>
+                    </Text>
                   </View>
-                  <Text style={{ fontFamily: MONO, fontSize: 8 }}>
-                    <Text style={{ color: "#3ED598" }}>{`+${fmtUSD(w.inUsd)}`}</Text>
-                    <Text style={{ color: "#8FA9B1" }}> · </Text>
-                    <Text style={{ color: "#FF9B8E" }}>{`−${fmtUSD(w.outUsd)}`}</Text>
-                  </Text>
+                  <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 3 }}>
+                    <Text style={{ fontFamily: MONO, fontSize: 7 }}>
+                      <Text style={{ color: "#8FA9B1" }}>Saldo anterior {w.openingUsd !== null ? fmtUSD(w.openingUsd) : "sin dato"}</Text>
+                      <Text style={{ color: "#8FA9B1" }}> → </Text>
+                      <Text style={{ color: AMBER, fontWeight: 600 }}>Saldo actual {w.closingUsd !== null ? fmtUSD(w.closingUsd) : "sin dato"}</Text>
+                    </Text>
+                  </View>
                 </View>
 
                 {w.groups.map((g, gi) => (
@@ -337,7 +349,7 @@ export function StatementDocument({ input }: { input: StatementInput }) {
                         <Text style={{ color: GREEN }}>{`+${fmtUSD(g.inUsd)}`}</Text>
                         <Text style={{ color: "#C9D8DD" }}> / </Text>
                         <Text style={{ color: RED }}>{`−${fmtUSD(g.outUsd)}`}</Text>
-                        <Text style={{ color: DIM }}> → </Text>
+                        <Text style={{ color: DIM }}> · neto del período </Text>
                         <Text style={{ fontWeight: 600, color: NAVY }}>{fmtUSD(g.netUsd)}</Text>
                       </Text>
                     </View>

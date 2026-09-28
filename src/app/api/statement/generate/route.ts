@@ -35,12 +35,20 @@ export async function POST(req: NextRequest) {
     let movements = perWallet.flat();
     if (aliado) movements = movements.filter((m) => effectiveAliadoId(m, db.classifications, db.aliados) === aliado.id);
 
+    // Saldo anterior/actual por wallet solo tiene sentido cuando el reporte cubre TODOS los
+    // movimientos de la wallet — filtrado a un solo aliado, el saldo actual real de la wallet
+    // (que incluye plata de otros aliados) no se corresponde con el neto mostrado, así que se omite.
+    const walletBalances: Record<string, number | null> = aliado
+      ? {}
+      : Object.fromEntries(breakdown.perWallet.map((p) => [p.walletId, p.usd]));
+
     const data = buildStatementData({
       wallets: db.wallets, aliados: db.aliados, classifications: db.classifications, movements,
       priceLookup: breakdown.priceLookup, holdings: breakdown.holdings, total: breakdown.total,
       incompleteWallets: db.wallets.filter((w) => breakdown.failedWalletIds.includes(w.id)).map((w) => w.label),
       generatedBy: `${auth.user.name}${aliado ? ` · Aliado: ${aliado.name}` : ""}`,
       dateFrom: desde, dateTo: hasta,
+      walletBalances,
     });
 
     const buffer = format === "pdf" ? await generateStatementPdf(data) : await generateStatementExcel(data);

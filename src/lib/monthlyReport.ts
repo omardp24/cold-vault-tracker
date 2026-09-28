@@ -83,6 +83,12 @@ export async function sendMonthlyReports(): Promise<void> {
     .filter((w) => breakdown.failedWalletIds.includes(w.id))
     .map((w) => w.label);
 
+  // Saldo actual real de cada wallet (hoy) para derivar el "saldo anterior" del período en el
+  // documento — ver el comentario de StatementAggregationInput.walletBalances.
+  const walletBalances: Record<string, number | null> = Object.fromEntries(
+    breakdown.perWallet.map((p) => [p.walletId, p.usd])
+  );
+
   const statementData = buildStatementData({
     wallets: db.wallets,
     aliados: db.aliados,
@@ -95,12 +101,16 @@ export async function sendMonthlyReports(): Promise<void> {
     generatedBy: "Reporte mensual automático",
     dateFrom: fromDay,
     dateTo: toDay,
+    walletBalances,
   });
 
+  // earlierData solo alimenta el análisis en texto (buildAnalysis → monthFacts), que no usa el
+  // saldo por wallet — walletBalances no aplicaría de todos modos a un mes ya cerrado en el pasado.
   const earlierData = buildStatementData({
     wallets: db.wallets, aliados: db.aliados, classifications: db.classifications, movements: earlierMovements,
     priceLookup: breakdown.priceLookup, holdings: breakdown.holdings, total: breakdown.total,
     incompleteWallets, generatedBy: "comparativo", dateFrom: earlierFromDay, dateTo: earlierToDay,
+    walletBalances: {},
   });
   const monthLabelOf = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("es-VE", { month: "long", year: "numeric", timeZone: "UTC" });
   const analysis = await buildAnalysis(statementData, earlierData, monthLabelOf(fromDay), monthLabelOf(earlierFromDay));

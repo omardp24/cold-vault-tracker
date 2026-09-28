@@ -79,6 +79,9 @@ export default function ColdVault() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [total, setTotal] = useState(0);
   const [priceLookup, setPriceLookup] = useState<Record<string, number | null>>({});
+  // Saldo actual (USD, en vivo) de cada wallet por separado — para "saldo anterior" del estado de
+  // cuenta (ver statementAggregation.ts); el resto de la app solo necesitaba el total agregado.
+  const [walletUsd, setWalletUsd] = useState<Record<string, number>>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -179,6 +182,7 @@ export default function ColdVault() {
     setRefreshing(true); setErrMsg("");
     const newBalances: typeof balances = {};
     const agg: Record<string, { symbol: string; amount: number; priceOverride?: number; coinId?: string }> = {};
+    const walletItems: Record<string, { symbol: string; amount: number; priceOverride?: number }[]> = {};
 
     const fetchWalletBalance = async (w: Wallet) => {
       try {
@@ -186,14 +190,17 @@ export default function ColdVault() {
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
         let detail = `${fmtAmt(d.native.amount, 8)} ${d.native.symbol}`;
+        const items: typeof walletItems[string] = [{ symbol: d.native.symbol, amount: d.native.amount }];
         agg[d.native.symbol] = agg[d.native.symbol] || { symbol: d.native.symbol, amount: 0 };
         agg[d.native.symbol].amount += d.native.amount;
         for (const t of d.tokens || []) {
           agg[t.symbol] = agg[t.symbol] || { symbol: t.symbol, amount: 0 };
           agg[t.symbol].amount += t.amount;
           if (t.priceUsd) agg[t.symbol].priceOverride = t.priceUsd;
+          items.push({ symbol: t.symbol, amount: t.amount, priceOverride: t.priceUsd });
           detail += ` · ${fmtAmt(t.amount, 2)} ${t.symbol}`;
         }
+        walletItems[w.id] = items;
         newBalances[w.id] = { loading: false, error: null, detail };
       } catch (e: any) {
         newBalances[w.id] = { loading: false, error: `Error: ${e.message || "fallo desconocido"}`, detail: null };
@@ -250,6 +257,14 @@ export default function ColdVault() {
 
     setBalances(newBalances); setHoldings(list); setTotal(sumTotal); setLastUpdated(new Date()); setRefreshing(false);
     setPriceLookup(newPriceLookup);
+    const newWalletUsd: Record<string, number> = {};
+    Object.entries(walletItems).forEach(([walletId, items]) => {
+      newWalletUsd[walletId] = items.reduce((sum, it) => {
+        const price = priceFor(it);
+        return sum + (price !== null ? price * it.amount : 0);
+      }, 0);
+    });
+    setWalletUsd(newWalletUsd);
   }, [wallets, manual]);
 
   useEffect(() => {
@@ -610,6 +625,7 @@ export default function ColdVault() {
     generatedBy: currentUser?.name || "—",
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    walletBalances: walletUsd,
   });
 
   const generateStatement = async (format: "pdf" | "excel") => {

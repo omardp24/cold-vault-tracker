@@ -62,6 +62,13 @@ export interface StatementAggregationInput {
   generatedBy: string;
   dateFrom?: string;
   dateTo?: string;
+  /** Saldo actual (en vivo, hoy) de cada wallet en USD — walletId -> usd. Con esto se deriva el
+   * "saldo anterior" (saldo actual menos el neto del período, mismo precio de hoy para ambos) que
+   * se muestra en el estado de cuenta, para que un período con más salidas que entradas no se vea
+   * como si la wallet hubiese quedado en negativo (ver PortfolioBreakdown.perWallet). Si una wallet
+   * no tiene dato (falló su lectura en vivo), sus saldos anterior/actual salen null.
+   */
+  walletBalances: Record<string, number | null>;
 }
 
 const CHAIN_LABEL: Record<Chain, string> = { BTC: "Bitcoin", ETH: "Ethereum", TRON: "Tron" };
@@ -76,7 +83,7 @@ function detailRow(m: Movement, classifications: Record<string, Classification>,
 }
 
 export function buildStatementData(input: StatementAggregationInput): StatementInput {
-  const { wallets, aliados, classifications, movements, priceLookup, holdings, total, incompleteWallets, generatedBy, dateFrom, dateTo } = input;
+  const { wallets, aliados, classifications, movements, priceLookup, holdings, total, incompleteWallets, generatedBy, dateFrom, dateTo, walletBalances } = input;
 
   const flowSummary = { inUsd: 0, outUsd: 0, feeUsd: 0 };
   const aliadoSummary: Record<string, { id: string; assets: Record<string, number>; count: number; usdApprox: number }> = {};
@@ -146,11 +153,18 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
       };
     }).sort((a, b) => b.movs.length - a.movs.length);
 
+    // Saldo anterior derivado hacia atrás desde el saldo actual real (ambos al precio de hoy, mismo
+    // criterio que el resto del documento): así el saldo actual nunca puede salir negativo (es el
+    // saldo real de la wallet), y el saldo anterior explica de dónde salió lo que se gastó de más
+    // este período frente a lo que entró.
+    const closingUsd = walletBalances[w.id] ?? null;
+    const openingUsd = closingUsd !== null ? closingUsd - inUsd + outUsd : null;
+
     walletRows.push({
       label: w.label, chainLabel: CHAIN_LABEL[w.chain], aliadoCount: groups.length, movCount: entry.movs.length,
-      inUsd, outUsd, netUsd: inUsd - outUsd,
+      inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd,
     });
-    walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, groups });
+    walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd, groups });
   });
 
   // Transferencias internas: la misma tx aparece dos veces (una vez por wallet involucrada,
