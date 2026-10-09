@@ -22,9 +22,10 @@ export interface MailAttachment {
   content: Buffer;
 }
 
-export async function sendMail(opts: { to: string; subject: string; html: string; attachments?: MailAttachment[] }): Promise<void> {
+/** Devuelve true solo si el correo salió; quien lo necesite (reporte semanal) puede reaccionar al fallo. */
+export async function sendMail(opts: { to: string; subject: string; html: string; attachments?: MailAttachment[] }): Promise<boolean> {
   const t = getTransporter();
-  if (!t) return; // fail-safe, mismo criterio que el resto de integraciones opcionales del proyecto
+  if (!t) return false; // fail-safe, mismo criterio que el resto de integraciones opcionales del proyecto
   try {
     await t.sendMail({
       from: `"Cold Vault" <${process.env.GMAIL_SMTP_USER}>`,
@@ -33,7 +34,9 @@ export async function sendMail(opts: { to: string; subject: string; html: string
       html: opts.html,
       attachments: opts.attachments,
     });
+    return true;
   } catch (e: any) {
     console.error("sendMail() error:", e.message || e);
+    return false;
   }
 }

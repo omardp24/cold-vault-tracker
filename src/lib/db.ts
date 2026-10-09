@@ -75,6 +75,7 @@ export interface DB {
   invites: Invite[];
   pushSubscriptions: PushSubscriptionRecord[]; // conjunto chico y acotado, como wallets/users — no una serie de tiempo
   classificationKeysVersion?: number; // 2 = claves estables por txid (ver lib/classificationKeys.ts)
+  weeklyReportSentFor?: string; // YYYY-MM-DD (Caracas) del último reporte semanal enviado — evita duplicados si el cron se repite
   movementWatchPrimed?: boolean; // true = ya se hizo el barrido inicial de movementWatch.ts (ver su comentario)
 }
 

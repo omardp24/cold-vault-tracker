@@ -1,0 +1,20 @@
+name: Reporte semanal (viernes)
+
+# Cada viernes a las 5:00 p. m. de Caracas (21:00 UTC) llama a un endpoint de Cold Vault que arma la relación
+# de la semana + lo que falta por clasificar y la envía por correo. Vercel Hobby solo permite un cron diario,
+# así que, igual que la vigilancia de movimientos, vive en GitHub Actions. Usa el secreto de repo CRON_SECRET.
+# "Run workflow" (workflow_dispatch) permite dispararlo a mano; el endpoint no duplica si ya se envió hoy.
+on:
+  schedule:
+    - cron: "0 21 * * 5"
+  workflow_dispatch: {}
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a /api/cron/weekly-report
+        run: |
+          curl -sf -m 90 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://cold-vault-tracker.vercel.app/api/cron/weekly-report"

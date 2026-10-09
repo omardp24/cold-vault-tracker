@@ -7,18 +7,13 @@ import { buildStatementData } from "./statementAggregation";
 import { generateStatementExcel } from "./statementExcel";
 import { generateStatementPdf } from "./statementPdf";
 import { sendMail } from "./mailer";
+import { VE_OFFSET_HOURS, veDayRange } from "./veDates";
 import { narrate, textToHtml, usd } from "./narrative";
 import type { StatementInput } from "./statementPdf";
 
 // El mes se calcula en hora de Venezuela (UTC-4, sin horario de verano), no en la del servidor (UTC en Vercel):
 // si no, un movimiento de las 9 p. m. del último día del mes caía en el mes siguiente.
-const VE_OFFSET_HOURS = 4;
-/** Rango [desde 00:00, hasta 23:59:59] en hora de Venezuela para dos fechas YYYY-MM-DD. */
-export function veDayRange(fromDay: string, toDay: string): { from: Date; to: Date } {
-  const [fy, fm, fd] = fromDay.split("-").map(Number);
-  const [ty, tm, td] = toDay.split("-").map(Number);
-  return { from: new Date(Date.UTC(fy, fm - 1, fd, VE_OFFSET_HOURS)), to: new Date(Date.UTC(ty, tm - 1, td + 1, VE_OFFSET_HOURS) - 1) };
-}
+export { veDayRange };
 
 function previousMonthRange(): { from: Date; to: Date; fromDay: string; toDay: string; earlierFrom: Date; earlierFromDay: string; earlierToDay: string } {
   const veNow = new Date(Date.now() - VE_OFFSET_HOURS * 3600_000); // "reloj de pared" de Caracas leído con getUTC*
