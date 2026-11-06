@@ -40,3 +40,10 @@ export async function sendMail(opts: { to: string; subject: string; html: string
     return false;
   }
 }
+
+/** Comprueba credenciales y conexión SMTP SIN enviar ningún correo (diagnóstico del reporte semanal). */
+export async function verifyMailer(): Promise<{ ok: boolean; error?: string }> {
+  const t = getTransporter();
+  if (!t) return { ok: false, error: "Faltan GMAIL_SMTP_USER / GMAIL_SMTP_APP_PASSWORD en el entorno." };
+  try { await t.verify(); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
+}

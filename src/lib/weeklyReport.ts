@@ -1,6 +1,6 @@
 import type { DB } from "./db";
 import { readDb, updateDb } from "./db";
-import { sendMail } from "./mailer";
+import { sendMail, verifyMailer } from "./mailer";
 import { generateStatementPdf } from "./statementPdf";
 import { buildWeeklyReport, type WeeklyReport } from "./weeklyReportBuild";
 
@@ -30,4 +30,13 @@ export async function sendWeeklyReport(opts: { force?: boolean } = {}): Promise<
   if (!ok) throw new Error("No se pudo enviar el correo (revisa GMAIL_SMTP_USER / GMAIL_SMTP_APP_PASSWORD).");
   await updateDb((d) => { d.weeklyReportSentFor = report.toDay; });
   return { sent: true, to, counts: report.counts };
+}
+
+/** Ensayo completo SIN enviar: arma el reporte, genera el PDF y comprueba el SMTP. Para diagnosticar fallos. */
+export async function checkWeeklyReport() {
+  const report = await buildWeeklyReport();
+  let pdf: { ok: boolean; bytes?: number; error?: string };
+  try { pdf = { ok: true, bytes: (await generateStatementPdf(report.statementInput)).length }; }
+  catch (e: any) { pdf = { ok: false, error: e?.message || String(e) }; }
+  return { subject: report.subject, counts: report.counts, to: recipients(), pdf, smtp: await verifyMailer() };
 }

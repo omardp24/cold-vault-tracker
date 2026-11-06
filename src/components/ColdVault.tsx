@@ -783,8 +783,14 @@ export default function ColdVault() {
   };
 
 
+  // Las tarjetas "Movimientos por wallet" son el selector del filtro de wallet: no pueden calcularse sobre una
+  // lista ya filtrada por wallet (si no, al elegir una, todas las demás se quedaban en 0). Respetan el resto de
+  // filtros (polvo, fechas, ocultar sospechosas) pero no el de wallet.
+  const visibleAnyWallet = movements
+    .filter((m) => passesDustFilter(m) && passesDateFilter(m))
+    .filter((m) => showSuspicious || estadoFilter === "suspicious" || !isHiddenSuspect(m));
   const walletSummary = wallets.map((w) => {
-    const movs = visibleMovements.filter((m: any) => m.walletId === w.id);
+    const movs = visibleAnyWallet.filter((m: any) => m.walletId === w.id);
     const outUsd = movs.filter((m) => m.direction === "out").reduce((s, m) => s + (safePrice(m) ? safePrice(m)! * m.amount : 0), 0);
     const inUsd = movs.filter((m) => m.direction === "in").reduce((s, m) => s + (safePrice(m) ? safePrice(m)! * m.amount : 0), 0);
     const pending = movs.filter(isPending).length;
