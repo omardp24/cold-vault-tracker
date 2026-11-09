@@ -918,6 +918,7 @@ export default function ColdVault() {
     return (
       <button
         onClick={() => setTab(id)}
+        data-active={active}
         className="cv-nav-item flex items-center gap-2.5 w-full text-left rounded-2xl px-3.5 py-2.5 text-[13.5px]"
         style={{ background: active ? "var(--tint)" : "transparent", color: active ? "var(--accent)" : "var(--dim)", fontWeight: active ? 600 : 500, border: "none", cursor: "pointer" }}
       >
@@ -969,7 +970,7 @@ export default function ColdVault() {
 
         <div className="mt-auto rounded-2xl p-3.5 text-[11px]" style={{ background: "var(--panel2)" }}>
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: (gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "var(--amber)" : "var(--pos)" }} />
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${(gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "" : "cv-live"}`} style={{ background: (gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "var(--amber)" : "var(--pos)" }} />
             <span className="uppercase tracking-wide font-semibold text-[10px]" style={{ color: "var(--dim)" }}>Red ahora</span>
           </div>
           <div className="space-y-1.5">
@@ -1055,6 +1056,7 @@ export default function ColdVault() {
             <button className="cv-x flex-shrink-0" onClick={() => setSaveError("")}>✕</button>
           </div>
         )}
+        <div key={tab} className="cv-tab-in">
         {tab === "portfolio" && (
           <PortfolioView
             total={total} wallets={wallets} fetchAll={fetchAll} refreshing={refreshing}
@@ -1068,7 +1070,7 @@ export default function ColdVault() {
             addManual={addManual} removeManual={removeManual}
             pieData={pieData} holdings={holdings} colorForSymbol={colorForSymbol}
             loadGasFees={loadGasFees} gasLoading={gasLoading} gasNow={gasNow}
-            history={history} historyLoading={historyLoading} historyRange={historyRange} setHistoryRange={setHistoryRange}
+            walletUsd={walletUsd} history={history} historyLoading={historyLoading} historyRange={historyRange} setHistoryRange={setHistoryRange}
             vesRates={vesRates}
           />
         )}
@@ -1118,6 +1120,7 @@ export default function ColdVault() {
         {tab === "audit" && <AuditTab />}
 
         {tab === "users" && currentUser?.role === "owner" && <UsersTab currentUser={currentUser} />}
+        </div>
 
         <div className="text-[11px] mt-4 text-center cv-safe-bottom md:pb-6" style={{ color: "var(--faint)" }}>
           Solo direcciones públicas — esta app nunca pide ni almacena claves privadas o tu frase semilla.

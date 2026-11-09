@@ -8,7 +8,7 @@ export interface PortfolioHistoryPoint { date: string; value: number; }
 
 export default function EvolutionChart({ history, loading }: { history: PortfolioHistoryPoint[]; loading: boolean }) {
   if (loading) {
-    return <div className="h-[220px] flex items-center justify-center text-[12.5px]" style={{ color: "var(--faint)" }}>Cargando…</div>;
+    return <div className="h-[220px] flex items-end gap-1.5 pb-6 px-2">{[40,55,48,62,58,70,66,78,72,85].map((h, i) => <span key={i} className="cv-skeleton flex-1" style={{ height: `${h}%`, animationDelay: `${i * 80}ms` }} />)}</div>;
   }
   // Con un solo punto (o ninguno) no hay línea que trazar todavía — el cron recién
   // empieza a guardar snapshots desde que se despliega, no hay forma de reconstruir
@@ -37,7 +37,7 @@ export default function EvolutionChart({ history, loading }: { history: Portfoli
             contentStyle={{ background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 12, color: "var(--ink)" }}
             labelStyle={{ color: "var(--dim)" }}
           />
-          <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#evoFill)" />
+          <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#evoFill)" animationDuration={900} animationEasing="ease-out" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

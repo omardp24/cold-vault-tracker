@@ -303,3 +303,135 @@ body {
 }
 .cv-chat-btn:hover { background: rgba(255, 255, 255, 0.28); }
 @media (prefers-reduced-motion: reduce) { .cv-pop, .cv-dot { animation: none; } }
+
+/* ============ MOVIMIENTO Y PROFUNDIDAD ============ */
+
+/* Resplandor ambiental fijo detrás de todo: da profundidad sin competir con el contenido. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 92% -8%, rgba(247, 123, 28, 0.10), transparent 60%),
+    radial-gradient(700px 480px at -6% 108%, rgba(30, 130, 150, 0.10), transparent 60%);
+}
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(900px 500px at 92% -8%, rgba(247, 123, 28, 0.08), transparent 60%),
+    radial-gradient(700px 480px at -6% 108%, rgba(30, 130, 150, 0.06), transparent 60%);
+}
+
+/* Cambio de pestaña: el contenido entra con un fundido corto. */
+@keyframes cv-tab-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.cv-tab-in { animation: cv-tab-in 0.32s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Entrada escalonada: los hijos directos aparecen uno tras otro. */
+.cv-stagger > * { animation: cv-tab-in 0.42s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.cv-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.cv-stagger > *:nth-child(2) { animation-delay: 70ms; }
+.cv-stagger > *:nth-child(3) { animation-delay: 140ms; }
+.cv-stagger > *:nth-child(4) { animation-delay: 210ms; }
+.cv-stagger > *:nth-child(5) { animation-delay: 280ms; }
+.cv-stagger > *:nth-child(6) { animation-delay: 350ms; }
+.cv-stagger > *:nth-child(n + 7) { animation-delay: 420ms; }
+
+/* Carga: esqueleto con brillo que recorre, en vez de "…" o "Cargando…". */
+@keyframes cv-shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}
+.cv-skeleton {
+  display: inline-block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--panel2) 0px, var(--line) 80px, var(--panel2) 160px);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  background-color: var(--panel2);
+  animation: cv-shimmer 1.3s ease-in-out infinite;
+}
+
+/* Pulso suave para indicadores "en vivo". */
+@keyframes cv-live {
+  0% { box-shadow: 0 0 0 0 rgba(62, 213, 152, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(62, 213, 152, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(62, 213, 152, 0); }
+}
+.cv-live { animation: cv-live 2s ease-out infinite; }
+
+/* Botones: respuesta táctil al presionar. */
+.cv-btn:active:not(:disabled), .cv-btn-ghost:active:not(:disabled) { transform: scale(0.97); }
+
+/* Navegación lateral: barra de acento en el ítem activo. */
+.cv-nav-item { position: relative; }
+.cv-nav-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  animation: cv-tab-in 0.25s ease both;
+}
+
+/* Variación (sube/baja) con color y una flecha que "respira". */
+.cv-delta { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 3px 9px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
+.cv-delta[data-dir="up"] { background: rgba(62, 213, 152, 0.14); color: var(--pos); }
+.cv-delta[data-dir="down"] { background: rgba(255, 107, 90, 0.14); color: var(--neg); }
+.cv-delta[data-dir="flat"] { background: var(--panel2); color: var(--dim); }
+
+/* ============ PANTALLAS DE ENTRADA (login / registro) ============ */
+.cv-auth { position: relative; overflow: hidden; }
+.cv-auth-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  opacity: 0.35;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 72%);
+}
+.cv-orb { position: absolute; border-radius: 9999px; filter: blur(70px); pointer-events: none; opacity: 0.5; }
+.cv-orb-1 { width: 380px; height: 380px; background: var(--accent); top: -120px; right: -60px; animation: cv-float 14s ease-in-out infinite; }
+.cv-orb-2 { width: 320px; height: 320px; background: #1e8296; bottom: -110px; left: -70px; animation: cv-float 17s ease-in-out infinite reverse; }
+.cv-orb-3 { width: 220px; height: 220px; background: var(--amber); bottom: 18%; right: 14%; opacity: 0.22; animation: cv-float 20s ease-in-out infinite; }
+@keyframes cv-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(26px, -22px) scale(1.06); }
+  66% { transform: translate(-18px, 18px) scale(0.96); }
+}
+@keyframes cv-ring {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.cv-logo-ring { position: absolute; inset: 0; border-radius: 1rem; border: 2px solid var(--accent); animation: cv-ring 2.6s ease-out infinite; }
+@keyframes cv-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.cv-bob { animation: cv-bob 4s ease-in-out infinite; }
+.cv-auth-card { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@keyframes cv-text-shine {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+.cv-shine {
+  background: linear-gradient(100deg, var(--accent) 20%, var(--amber) 45%, var(--accent) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: cv-text-shine 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-tab-in, .cv-stagger > *, .cv-skeleton, .cv-live, .cv-orb, .cv-logo-ring, .cv-bob, .cv-shine, .cv-nav-item[data-active="true"]::before { animation: none !important; }
+  .cv-shine { -webkit-text-fill-color: var(--accent); background: none; }
+}

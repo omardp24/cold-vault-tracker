@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
-import { Check, ChevronRight, Download, Pencil, Plus, RefreshCw, Sparkles, Wallet as WalletIcon, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Check, ChevronRight, Copy, Download, ExternalLink, Minus, Pencil, Plus, RefreshCw, Sparkles, Wallet as WalletIcon, X } from "lucide-react";
 import {
   AssetIcon, CHAIN_COLORS, CHAIN_LABEL, ChainBadge, Chain, Holding, ManualHolding, ValueCounter, Wallet,
   fmtAmt, fmtUSD, shortAddr,
@@ -53,9 +53,20 @@ export interface PortfolioViewProps {
   historyRange: HistoryRange;
   setHistoryRange: (r: HistoryRange) => void;
   vesRates: { bcv: number | null; paralelo: number | null };
+  walletUsd: Record<string, number>;
 }
 
-function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; balance: BalanceEntry; onRemove: () => void; onRename: (label: string) => void }) {
+const EXPLORER_ADDR: Record<Chain, (a: string) => string> = {
+  BTC: (a) => `https://mempool.space/address/${a}`,
+  ETH: (a) => `https://etherscan.io/address/${a}`,
+  TRON: (a) => `https://tronscan.org/#/address/${a}`,
+};
+
+function WalletRow({ wallet, balance, usd, share, onRemove, onRename }: { wallet: Wallet; balance: BalanceEntry; usd?: number; share: number; onRemove: () => void; onRename: (label: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const copyAddress = async () => {
+    try { await navigator.clipboard.writeText(wallet.address); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* sin permiso del portapapeles */ }
+  };
   const [expanded, setExpanded] = useState(false);
   const [history, setHistory] = useState<PortfolioHistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -110,10 +121,15 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
               {/* Nombre, dirección corta y saldos como «chips» (uno por activo): en el teléfono el texto
                   largo del saldo se partía en líneas sueltas; así cada activo queda en su propia píldora
                   y nada se mete debajo de los botones de lápiz/borrar (columna aparte, ancho fijo). */}
-              <div className="text-[13.5px] font-semibold truncate" style={{ color: "var(--ink)" }}>{wallet.label}</div>
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-[13.5px] font-semibold truncate" style={{ color: "var(--ink)" }}>{wallet.label}</div>
+                {balance.loading ? <span className="cv-skeleton flex-shrink-0" style={{ width: 70, height: 14 }} /> : usd !== undefined && !balance.error && (
+                  <div className="font-mono text-[12.5px] font-bold flex-shrink-0" style={{ color: "var(--ink)" }}>{fmtUSD(usd)}</div>
+                )}
+              </div>
               <div className="font-mono text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(wallet.address)}</div>
               {balance.loading ? (
-                <div className="font-mono text-[12px] mt-1" style={{ color: "var(--dim)" }}>…</div>
+                <div className="flex gap-1.5 mt-1.5"><span className="cv-skeleton" style={{ width: 92, height: 20, borderRadius: 9999 }} /><span className="cv-skeleton" style={{ width: 70, height: 20, borderRadius: 9999 }} /></div>
               ) : balance.error ? (
                 <div className="text-[12px] mt-1" style={{ color: "var(--neg)" }}>{balance.error}</div>
               ) : (
@@ -121,6 +137,14 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
                   {(balance.detail || "").split(" · ").filter(Boolean).map((part) => (
                     <span key={part} className="whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[11.5px]" style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{part}</span>
                   ))}
+                </div>
+              )}
+              {!balance.loading && !balance.error && share > 0 && (
+                <div className="flex items-center gap-2 mt-2" title={`${(share * 100).toFixed(1)}% del portafolio`}>
+                  <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: "var(--panel2)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(share * 100, 1.5)}%`, background: "linear-gradient(90deg, var(--accent), var(--amber))", transition: "width .6s cubic-bezier(.2,.8,.3,1)" }} />
+                  </div>
+                  <span className="font-mono text-[10.5px] flex-shrink-0" style={{ color: "var(--faint)" }}>{(share * 100).toFixed(share < 0.1 ? 1 : 0)}%</span>
                 </div>
               )}
             </div>
@@ -134,7 +158,15 @@ function WalletRow({ wallet, balance, onRemove, onRename }: { wallet: Wallet; ba
         )}
       </div>
       {expanded && !editing && (
-        <div className="pb-3 px-1.5">
+        <div className="pb-3 px-1.5 cv-tab-in">
+          <div className="rounded-xl p-3 mb-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
+            <div className="text-[10.5px] uppercase tracking-wide mb-1" style={{ color: "var(--faint)" }}>Dirección completa</div>
+            <div className="font-mono text-[11.5px] break-all" style={{ color: "var(--dim)" }}>{wallet.address}</div>
+            <div className="flex gap-2 mt-2.5">
+              <button className="cv-btn-ghost cv-icon-btn" onClick={copyAddress}>{copied ? <><Check size={12} /> ¡Copiada!</> : <><Copy size={12} /> Copiar</>}</button>
+              <a className="cv-btn-ghost cv-icon-btn" href={EXPLORER_ADDR[wallet.chain](wallet.address)} target="_blank" rel="noreferrer"><ExternalLink size={12} /> Explorador</a>
+            </div>
+          </div>
           <EvolutionChart history={history} loading={loading} />
         </div>
       )}
@@ -147,13 +179,20 @@ export default function PortfolioView({
   chain, setChain, labelInput, setLabelInput, addrInput, setAddrInput, addWallet, addWalletError, balances, removeWallet, renameWallet,
   manual, manualCoinId, setManualCoinId, manualSymbol, setManualSymbol, manualQty, setManualQty, addManual, removeManual,
   pieData, holdings, colorForSymbol, loadGasFees, gasLoading, gasNow,
-  history, historyLoading, historyRange, setHistoryRange, vesRates,
+  history, historyLoading, historyRange, setHistoryRange, vesRates, walletUsd,
 }: PortfolioViewProps) {
   // Móvil: el formulario de alta se abre con un botón; en pantallas grandes siempre está visible.
   const [showAdd, setShowAdd] = useState(false);
+
+  // Variación frente al último snapshot diario guardado (solo si el total está completo: con una wallet sin
+  // leer, la diferencia sería un salto falso).
+  const lastSnap = history.length > 0 ? history[history.length - 1] : null;
+  const delta = lastSnap && incompleteWallets.length === 0 && total > 0 ? total - lastSnap.value : null;
+  const deltaPct = delta !== null && lastSnap && lastSnap.value > 0 ? (delta / lastSnap.value) * 100 : null;
+  const deltaDir = delta === null ? null : Math.abs(delta) < 0.5 ? "flat" : delta > 0 ? "up" : "down";
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-4 mb-4 items-stretch">
+      <div className="cv-stagger grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-4 mb-4 items-stretch">
         <div className="cv-card cv-card-hover p-4 sm:p-6 cv-fade-in flex flex-col justify-between">
           <div>
             <div className="cv-eyebrow flex items-center gap-1.5">
@@ -163,6 +202,15 @@ export default function PortfolioView({
             <div className="font-mono text-[32px] sm:text-[40px] font-bold break-all mt-1.5 leading-none" style={{ color: "var(--ink)" }}>
               <ValueCounter value={total} />
             </div>
+            {deltaDir && delta !== null && (
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap cv-tab-in">
+                <span className="cv-delta" data-dir={deltaDir}>
+                  {deltaDir === "up" ? <ArrowUpRight size={13} /> : deltaDir === "down" ? <ArrowDownRight size={13} /> : <Minus size={13} />}
+                  {delta >= 0 ? "+" : "−"}{fmtUSD(Math.abs(delta))}{deltaPct !== null && ` (${deltaPct >= 0 ? "+" : "−"}${Math.abs(deltaPct).toFixed(1)}%)`}
+                </span>
+                <span className="text-[11px]" style={{ color: "var(--faint)" }}>vs. el cierre diario del {lastSnap!.date}</span>
+              </div>
+            )}
             {(vesRates.bcv || vesRates.paralelo) && (
               <div className="text-[11.5px] font-mono mt-1" style={{ color: "var(--faint)" }}>
                 {vesRates.bcv && <>≈ Bs {(total * vesRates.bcv).toLocaleString("es-VE", { maximumFractionDigits: 0 })} (BCV)</>}
@@ -226,7 +274,7 @@ export default function PortfolioView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1fr] gap-4 mb-5 items-stretch">
+      <div className="cv-stagger grid grid-cols-1 md:grid-cols-[1.15fr_1fr] gap-4 mb-5 items-stretch">
         <div className="cv-card cv-card-hover p-5 flex flex-col">
           <div className="flex items-center gap-2 mb-3">
             <WalletIcon size={16} strokeWidth={2.25} style={{ color: "var(--dim)" }} />
@@ -248,7 +296,7 @@ export default function PortfolioView({
           {wallets.length === 0 && <div className="text-[12.5px] py-2" style={{ color: "var(--dim)" }}>Copia la dirección pública desde Ledger Live (nunca la clave privada).</div>}
           {wallets.map((w) => {
             const b = balances[w.id] || { loading: true, error: null, detail: null };
-            return <WalletRow key={w.id} wallet={w} balance={b} onRemove={() => removeWallet(w.id)} onRename={(label) => renameWallet(w.id, label)} />;
+            return <WalletRow key={w.id} wallet={w} balance={b} usd={walletUsd[w.id]} share={total > 0 && walletUsd[w.id] ? walletUsd[w.id] / total : 0} onRemove={() => removeWallet(w.id)} onRename={(label) => renameWallet(w.id, label)} />;
           })}
           <div className="mt-4 pt-3.5 border-t border-dashed" style={{ borderColor: "var(--line)" }}>
             <div className="font-display text-[13px] font-semibold mb-2.5">Otro activo (manual)</div>
@@ -294,15 +342,15 @@ export default function PortfolioView({
                   const pct = total > 0 && h.value ? (h.value / total) * 100 : null;
                   const color = colorForSymbol[h.symbol];
                   return (
-                    <div key={h.symbol} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div key={h.symbol} className="flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span
                           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ background: color || "var(--line)", border: color ? "none" : "1px solid var(--faint)" }}
                         />
                         <AssetIcon symbol={h.symbol} size={16} />
                         <span className="font-medium" style={{ color: "var(--ink)" }}>{h.symbol}</span>
-                        <span className="font-mono" style={{ color: "var(--dim)" }}>{fmtAmt(h.amount, 4)}</span>
+                        <span className="font-mono truncate" style={{ color: "var(--dim)" }}>{fmtAmt(h.amount, 4)}</span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="font-mono" style={{ color: "var(--dim)" }}>{fmtUSD(h.value)}</span>
