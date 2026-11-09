@@ -10,6 +10,11 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
+# Si dos corridas se solapan, la segunda espera (la ruta no avisa dos veces del mismo movimiento de todos modos).
+concurrency:
+  group: watch-movements
+  cancel-in-progress: false
+
 jobs:
   watch:
     runs-on: ubuntu-latest
