@@ -435,3 +435,59 @@ body::before {
   .cv-tab-in, .cv-stagger > *, .cv-skeleton, .cv-live, .cv-orb, .cv-logo-ring, .cv-bob, .cv-shine, .cv-nav-item[data-active="true"]::before { animation: none !important; }
   .cv-shine { -webkit-text-fill-color: var(--accent); background: none; }
 }
+
+/* --- Portafolio «Portada»: carrusel de wallets en teléfono, cuadrícula en escritorio --- */
+.cv-wallet-rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin: 0 -12px;
+  padding: 2px 12px 6px;
+  scroll-padding-left: 12px;
+}
+.cv-wallet-rail::-webkit-scrollbar { display: none; }
+.cv-wallet-card { flex: 0 0 78%; max-width: 300px; scroll-snap-align: start; }
+@media (min-width: 768px) {
+  .cv-wallet-rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 16px;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+  .cv-wallet-card { max-width: none; }
+  /* La hoja modal pasa a ser un diálogo centrado en pantallas grandes */
+  .cv-sheet-modal {
+    left: 50%; right: auto; top: 50%; bottom: auto;
+    width: min(480px, calc(100vw - 48px));
+    max-height: 88vh;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    padding: 20px;
+    transform: translate(-50%, -50%);
+    animation: cv-modal-in 0.2s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+}
+@keyframes cv-modal-in {
+  from { opacity: 0; transform: translate(-50%, -47%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+@media (prefers-reduced-motion: reduce) { .cv-sheet-modal { animation: none; } }
+@media (min-width: 768px) {
+  .cv-sheet-wide { width: min(820px, calc(100vw - 48px)); }
+}
+/* Pestañas internas de una pantalla (Movimientos): píldoras con scroll horizontal en teléfono */
+.cv-subtabs { display: flex; gap: 4px; padding: 4px; border-radius: 9999px; background: var(--panel2); overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.cv-subtabs::-webkit-scrollbar { display: none; }
+.cv-subtab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; border: none; cursor: pointer; border-radius: 9999px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--dim); transition: background 0.15s ease, color 0.15s ease; }
+.cv-subtab[data-active="true"] { background: var(--accent); color: #fff; }
+.cv-subtab-count { font-family: var(--font-mono); font-size: 10.5px; border-radius: 9999px; padding: 1px 7px; background: var(--panel); color: var(--dim); }
+.cv-subtab[data-active="true"] .cv-subtab-count { background: rgba(255, 255, 255, 0.24); color: #fff; }
+/* Etiqueta pequeña de estado/alerta */
+.cv-tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 2px 8px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+/* Lista de un día en Movimientos: la primera fila no lleva línea superior */
+.cv-daylist > :first-child { border-top: none; }

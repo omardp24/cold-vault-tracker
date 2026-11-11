@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "portafolio": {
+      "targetKind": "existing-ui",
+      "projectId": "06906d6a-39d7-4dee-b36f-f851bbaf1a55",
+      "baselineDraftId": "a1d12827-03d5-4258-8db8-1eac09ced1db",
+      "activeDraftId": "c7593235-2f76-4f1b-8b43-89e0caa68398",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/components/coldvault/PortfolioView.tsx",
+        "src/components/ColdVault.tsx:907:1157",
+        "src/components/coldvault/shared.tsx",
+        "src/components/coldvault/EvolutionChart.tsx",
+        "src/app/globals.css",
+        "tailwind.config.ts",
+        "src/app/layout.tsx"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "fcea390ea26cb2d958d6807d575857ee9449fa348f3d0303d670a085724c3818",
+        "src/components/coldvault/PortfolioView.tsx": "6552e065a76d6c43db191b3c976d1bbf4c3075cb861085adb8e9af014fd35395",
+        "src/components/ColdVault.tsx": "eee2a19bd5263d71cee1abd7cd87ad4b5e76d8dd9d33fce969cc045b58cdd7f3",
+        "src/components/coldvault/shared.tsx": "f4a6f00a10cfeafba043b255aa8388dab74014a887e35429fa88367f83229d86",
+        "src/components/coldvault/EvolutionChart.tsx": "870e39dd17111fd12f2d8460f4c51bce11eafbe07d3360bd2335fda5f820ae48",
+        "src/app/globals.css": "05a5db5dd157ce5b75288bd770e29000d8f2c7f14a522fb9b8f2b184fb20ad5f",
+        "tailwind.config.ts": "601064a0dfb56dba7235cb1bc40462463669ea6d45e119cbcbafbc0e928bb83d",
+        "src/app/layout.tsx": "b19c2b3c03c2bd4566732bb7616e252611920dc18d6d379f9964b1173d623b90"
+      },
+      "components": [],
+      "drafts": {
+        "a1d12827-03d5-4258-8db8-1eac09ced1db": {
+          "title": "Portafolio actual (reproducción, móvil, oscuro)",
+          "visualDirection": "baseline",
+          "currentVersion": 1
+        },
+        "c7593235-2f76-4f1b-8b43-89e0caa68398": {
+          "title": "A — Portada",
+          "visualDirection": "hero total+gráfica fusionados, 4 indicadores, carrusel de wallets, barra de asignación + tenencias",
+          "parentDraftId": "a1d12827-03d5-4258-8db8-1eac09ced1db",
+          "currentVersion": 1
+        },
+        "2cf22cc0-5109-43e5-ac4b-ba857f78d7b7": {
+          "title": "B — Bóveda por wallet",
+          "visualDirection": "wallets protagonistas agrupadas por red, control Wallets/Activos/Evolución, botón + flotante",
+          "parentDraftId": "a1d12827-03d5-4258-8db8-1eac09ced1db",
+          "currentVersion": 1
+        },
+        "45b41aa8-1469-45e7-b911-3ae25d8a8352": {
+          "title": "C — Estado de cuenta",
+          "visualDirection": "libro contable denso sin tarjetas, tabla Posición por activo/por wallet, barra de asignación",
+          "parentDraftId": "a1d12827-03d5-4258-8db8-1eac09ced1db",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-11-09T19:25:08.829780+00:00"
+    }
+  }
+}

@@ -1,34 +1,25 @@
 "use client";
 
-import { useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import {
-  ArrowLeftRight, ChevronRight, CircleCheck, Clock, Download, Plus, Search, SlidersHorizontal, Sparkles, Users as UsersIcon, X,
+  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Ban, ChevronRight, CircleCheck, Clock, CreditCard, Download, ExternalLink, Flag,
+  MoreHorizontal, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Trash2, TriangleAlert, Users as UsersIcon,
 } from "lucide-react";
 import {
-  Aliado, CHAIN_LABEL, ChainBadge, Chain, Movement, Wallet,
+  Aliado, CHAIN_LABEL, ChainBadge, Chain, Movement, Sheet, Wallet,
   fmtAmt, fmtDate, fmtUSD, shortAddr,
 } from "./shared";
+import { APP_TZ } from "@/lib/format";
 import ConceptoInput from "./ConceptoInput";
 import TransactionDetailModal, { type TxDetailContext } from "./TransactionDetailModal";
 
+type InnerView = "actividad" | "clasificar" | "aliados" | "resumen";
+// «lun, 10 nov 2026» en hora de Caracas — encabezado de cada día en la lista.
+const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("es-VE", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: APP_TZ });
 type DirFilter = "all" | "in" | "out";
 type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee" | "suspicious";
 type GroupViewMode = "pending" | "all";
 type GroupBatchEntry = { aliadoId: string; concepto: string; applying: boolean };
-
-// En escritorio el contenido se ve siempre; en el teléfono se pliega bajo un resumen de una línea
-// para que los avisos largos no empujen la lista de movimientos fuera de la pantalla.
-function MobileFold({ summary, children, className = "", style }: { summary: ReactNode; children: ReactNode; className?: string; style?: CSSProperties }) {
-  return (
-    <>
-      <div className={`hidden md:block ${className}`} style={style}>{children}</div>
-      <details className={`md:hidden ${className}`} style={style}>
-        <summary className="cursor-pointer list-none font-semibold" style={{ listStyle: "none" }}>{summary} <span style={{ color: "var(--faint)", fontWeight: 400 }}>· ver más</span></summary>
-        <div className="mt-2">{children}</div>
-      </details>
-    </>
-  );
-}
 
 export interface MovementsViewProps {
   wallets: Wallet[];
@@ -212,886 +203,669 @@ export default function MovementsView(props: MovementsViewProps) {
     setSuggesting(null);
   };
 
+  // Vista interna de la pantalla. «Actividad» es la lista; el resto son espacios propios para
+  // clasificar en bloque, gestionar aliados y ver los totales.
+  const [view, setView] = useState<InnerView>("actividad");
+  const [showTools, setShowTools] = useState(false);
+
+  const assetsLine = (assets: Record<string, number>) => Object.entries(assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ");
+  const rowId = (m: Movement) => `${m.key}:${(m as any).walletId}`;
+  const hasUnverified = movements.some((m) => !m.verified) || movements.some((m) => isPoisoningSuspect(m.counterparty));
+  const hasSanctioned = movements.some((m) => quickAuditFor(m)?.sanctioned || quickAuditFor(m)?.blacklisted);
+  const olderWallets = wallets.filter((w) => cursors[w.id]);
+
+  // Agrupa la lista por día (hora de Caracas); filteredMovements ya viene ordenado por fecha.
+  const dayGroups: { label: string; items: Movement[] }[] = [];
+  filteredMovements.forEach((m) => {
+    const label = m.date ? dayLabel(m.date) : "Sin confirmar";
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.label === label) last.items.push(m); else dayGroups.push({ label, items: [m] });
+  });
+
+  const statusTag = (m: Movement) => {
+    if (isInternalTransfer(m)) return <span className="cv-tag" style={{ background: "var(--panel2)", color: "var(--accent)" }}><ArrowLeftRight size={10} /> interna</span>;
+    if (effectiveIsFee(m)) return <span className="cv-tag" style={{ background: "var(--panel2)", color: "var(--dim)" }}><CreditCard size={10} /> comisión</span>;
+    if (isPending(m)) return <span className="cv-tag" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> pendiente</span>;
+    return <span className="cv-tag" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> clasificado</span>;
+  };
+
+  const flagTags = (m: Movement) => {
+    const sus = suspicionFor(m);
+    const qa = quickAuditFor(m);
+    if (!sus && m.verified && !isPoisoningSuspect(m.counterparty) && !qa?.sanctioned && !qa?.blacklisted) return null;
+    const bad = { background: "var(--neg)", color: "#fff" };
+    const warn = { background: "var(--amber)", color: "#0e2830" };
+    return (
+      <span className="flex flex-wrap gap-1 mt-1.5">
+        {sus && <span title={sus.reason} className="cv-tag" style={sus.kind === "fraude" ? bad : warn}><Flag size={10} /> {sus.label}</span>}
+        {!m.verified && <span title="El token dice ser esta moneda pero el contrato no coincide con el oficial — probable token falso/spam." className="cv-tag" style={bad}><TriangleAlert size={10} /> no verificado</span>}
+        {isPoisoningSuspect(m.counterparty) && <span title="Esta dirección se parece mucho a otra que has usado, pero es distinta — posible address poisoning. No la copies de aquí, verifica siempre en el explorador." className="cv-tag" style={warn}><TriangleAlert size={10} /> similar a otra</span>}
+        {qa?.sanctioned && <span title={`Dirección en la lista de sanciones OFAC (${qa.sanctionLists.join(", ")}).`} className="cv-tag" style={bad}><Ban size={10} /> sancionada</span>}
+        {qa?.blacklisted && <span title="Esta dirección está en la lista negra de stablecoins (USDT/USDC congelado)." className="cv-tag" style={bad}><Ban size={10} /> lista negra</span>}
+      </span>
+    );
+  };
+
+  const aliadoOptions = (
+    <>
+      <option value="">Sin clasificar</option>
+      {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      <option value="__new__">+ Nuevo aliado…</option>
+    </>
+  );
+
+  /** Fila de un movimiento: en teléfono es una tarjeta que se pliega al clasificar; en escritorio, una fila con la clasificación en línea. */
+  const movementRow = (m: Movement) => {
+    const id = rowId(m);
+    const pending = isPending(m);
+    const internal = isInternalTransfer(m);
+    const fee = effectiveIsFee(m);
+    const editing = pending || openCards.has(id);
+    const curAliado = effectiveAliadoId(m);
+    const usd = usdFor(m);
+    const out = m.direction === "out";
+    return (
+      <div key={id} className="cv-row border-t px-1.5 py-3 md:py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] md:gap-5 md:items-center rounded-md" style={{ borderColor: "var(--line)" }}>
+        <div className="flex items-start gap-1 min-w-0">
+          <button type="button" className="flex items-start gap-3 min-w-0 flex-1 text-left" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }} onClick={() => setDetailMovement(m)} title="Ver detalle de la operación">
+            <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: internal ? "var(--panel2)" : out ? "rgba(255,107,90,.14)" : "rgba(62,213,152,.14)", color: internal ? "var(--accent)" : out ? "var(--neg)" : "var(--pos)" }}>
+              {internal ? <ArrowLeftRight size={16} /> : out ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}
+            </span>
+            <span className="min-w-0 flex-1 block">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-[14.5px] font-semibold whitespace-nowrap" style={{ color: out ? "var(--neg)" : "var(--pos)" }}>
+                  {out ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
+                </span>
+                {usd !== null && <span className="font-mono text-[11px] flex-shrink-0" style={{ color: "var(--faint)" }}>{fmtUSD(usd * m.amount)}</span>}
+              </span>
+              <span className="flex items-center gap-1.5 text-[11.5px] mt-0.5 min-w-0" style={{ color: "var(--dim)" }}>
+                <ChainBadge chain={m.chain} size={14} />
+                <span className="truncate">{m.walletLabel} · <span className="font-mono">{shortAddr(m.counterparty)}</span>{m.otherCount > 0 && ` +${m.otherCount} más`}</span>
+              </span>
+              {flagTags(m)}
+            </span>
+          </button>
+          <a className="flex items-center justify-center flex-shrink-0 rounded-full" style={{ width: 32, height: 32, color: "var(--faint)" }} href={m.explorer} target="_blank" rel="noreferrer" title="Abrir en el explorador" aria-label="Abrir en el explorador"><ExternalLink size={14} /></a>
+        </div>
+
+        <div className="mt-2.5 md:mt-0 min-w-0">
+          {internal ? (
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--dim)" }}>
+              {statusTag(m)} <span className="truncate">a tu wallet «{findOwnWallet(m.chain, m.counterparty)?.label}»</span>
+            </div>
+          ) : fee ? (
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--dim)" }}>
+              {statusTag(m)} <span className="truncate">Comisión de red</span>
+              <button className="cv-x ml-auto" title="Quitar la marca de comisión" aria-label="Quitar la marca de comisión" onClick={() => saveClassification(m.key, { isFee: false })}>✕</button>
+            </div>
+          ) : (
+            <>
+              {/* Teléfono, ya clasificado: una línea con «Editar» */}
+              {!editing && (
+                <div className="md:hidden flex items-center justify-between gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--panel2)" }}>
+                  <div className="min-w-0 text-[12.5px] truncate">
+                    <span className="font-semibold">{aliados.find((a) => a.id === curAliado)?.name || "—"}</span>
+                    {effectiveConcepto(m).trim() && <span style={{ color: "var(--dim)" }}> · {effectiveConcepto(m)}</span>}
+                  </div>
+                  <button className="cv-x flex-shrink-0" onClick={() => toggleCard(id)} title="Editar clasificación" aria-label="Editar clasificación"><Pencil size={14} /></button>
+                </div>
+              )}
+              <div className={`${editing ? "flex" : "hidden md:flex"} flex-col md:flex-row md:items-center gap-1.5`}>
+                <span className="hidden md:block flex-shrink-0">{statusTag(m)}</span>
+                <div className="flex gap-1 md:flex-1 min-w-0">
+                  <ConceptoInput
+                    key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
+                    className="cv-input w-full min-w-0 md:py-1.5 md:px-2.5"
+                    placeholder="Concepto — ej. compra insumos"
+                    value={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
+                    onSave={(concepto) => saveClassification(m.key, { concepto })}
+                  />
+                  <button className="cv-x flex-shrink-0" title="Sugerir con IA" aria-label="Sugerir con IA" disabled={suggesting === m.key} onClick={() => suggestForMovement(m)}>
+                    <Sparkles size={14} className={suggesting === m.key ? "animate-pulse" : ""} />
+                  </button>
+                </div>
+                <select className="cv-select w-full md:w-[168px] md:flex-shrink-0" value={curAliado || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)} aria-label="Aliado">
+                  {aliadoOptions}
+                </select>
+                <div className="flex items-center justify-between gap-2 md:flex-shrink-0">
+                  <button className="cv-x inline-flex items-center gap-1.5 text-[11.5px]" style={{ fontSize: 11.5 }} title="Marcar como comisión de red" onClick={() => saveClassification(m.key, { isFee: true })}>
+                    <CreditCard size={14} /> <span className="md:hidden">Marcar como comisión</span>
+                  </button>
+                  {!pending && <span className="md:hidden"><button className="cv-btn-ghost" onClick={() => toggleCard(id)}>Listo</button></span>}
+                </div>
+              </div>
+              {aiSuggestions[m.key]?.aliadoSugerido && editing && (
+                <div className="text-[11px] mt-1" style={{ color: "var(--accent)" }}>Podría ser: {aiSuggestions[m.key].aliadoSugerido}</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const filterControls = (
+    <div className="space-y-4">
+      <div>
+        <div className="cv-eyebrow mb-1.5">Dirección</div>
+        <div className="grid grid-cols-3 gap-2">
+          {([["all", "Todas"], ["out", "Salidas"], ["in", "Entradas"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setDirFilter(v)} className="rounded-xl py-2.5 text-[13px] font-medium"
+              style={{ background: dirFilter === v ? "var(--accent)" : "var(--panel2)", color: dirFilter === v ? "#fff" : "var(--ink)", border: "none", cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="cv-eyebrow mb-1.5">Estado</div>
+        <div className="grid grid-cols-2 gap-2">
+          {([["all", "Cualquiera"], ["pending", "Pendientes"], ["classified", "Clasificados"], ["internal", "Internas"], ["fee", "Comisiones"], ["suspicious", "Polvo / fraude"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setEstadoFilter(v)} className="rounded-xl py-2.5 text-[13px] font-medium"
+              style={{ background: estadoFilter === v ? "var(--accent)" : "var(--panel2)", color: estadoFilter === v ? "#fff" : "var(--ink)", border: "none", cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="cv-eyebrow mb-1.5">Wallet</div>
+        <select className="cv-select w-full" value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)}>
+          <option value="all">Todas las wallets</option>
+          {wallets.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <div className="cv-eyebrow mb-1.5">Período</div>
+        <div className="flex gap-2">
+          <input type="date" className="cv-input flex-1 min-w-0" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Desde" />
+          <input type="date" className="cv-input flex-1 min-w-0" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Hasta" />
+        </div>
+      </div>
+      <div>
+        <div className="cv-eyebrow mb-1.5">Ocultar polvo</div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[13px]" style={{ color: "var(--dim)" }}>Mínimo $</span>
+          <input className="cv-input w-24" value={minUsd} onChange={(e) => setMinUsd(e.target.value)} />
+          {dustHiddenCount > 0 && <span className="text-[12px]" style={{ color: "var(--faint)" }}>{dustHiddenCount} ocultos</span>}
+        </div>
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: "var(--ink)" }}>
+          <input type="checkbox" checked={hideUnpriced} onChange={(e) => setHideUnpriced(e.target.checked)} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} />
+          Ocultar tokens sin precio (spam)
+        </label>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button className="cv-btn-ghost flex-1" onClick={() => { setDirFilter("all"); setEstadoFilter("all"); setWalletFilter("all"); setDateFrom(""); setDateTo(""); setSearchText(""); }}>Limpiar todo</button>
+        <button className="cv-btn flex-1" onClick={() => setShowFilterSheet(false)}>Ver {filteredMovements.length} movimientos</button>
+      </div>
+    </div>
+  );
+
+  const net = flowSummary.inUsd - flowSummary.outUsd;
+  const maxOut = Math.max(1, ...summaryRows.map((r) => r.usdApprox));
+  const maxIn = Math.max(1, ...summaryRowsIn.map((r) => r.usdApprox));
+
+  const summaryCard = (title: string, rows: typeof summaryRows, max: number, color: string) => (
+    <div className="cv-card p-4 sm:p-5">
+      <div className="font-display text-sm font-semibold">{title}</div>
+      <div className="text-[11px] mb-3" style={{ color: "var(--faint)" }}>Valor USD aproximado al precio actual.</div>
+      {rows.map((r) => (
+        <div key={r.id} className="py-2.5 border-t" style={{ borderColor: "var(--line)" }}>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[13px] font-medium truncate" style={{ color: r.id === "sin_clasificar" ? "var(--dim)" : "var(--ink)" }}>{nameFor(r.id)}</span>
+            <span className="font-mono text-[13.5px] font-bold flex-shrink-0" style={{ color }}>{fmtUSD(r.usdApprox)}</span>
+          </div>
+          <div className="h-[4px] rounded-full overflow-hidden my-1.5" style={{ background: "var(--panel2)" }}>
+            <div className="h-full rounded-full" style={{ width: `${Math.max((r.usdApprox / max) * 100, 1)}%`, background: color, opacity: r.id === "sin_clasificar" ? 0.45 : 1 }} />
+          </div>
+          <div className="text-[11px] font-mono truncate" style={{ color: "var(--dim)" }}>{r.count} mov · {assetsLine(r.assets)}</div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <>
-      {/* En el teléfono lo primero es la lista de movimientos; los resúmenes por aliado van después (order-*). */}
-      <div className="flex flex-col">
-      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-3 sm:mb-4 order-1">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 mb-1.5">
-          <div className="flex items-center gap-2"><ArrowLeftRight size={16} strokeWidth={2.25} style={{ color: "var(--ink)" }} /><div className="font-display text-sm font-semibold">Movimientos</div></div>
-          <button className="cv-btn w-full sm:w-auto" onClick={loadMovements} disabled={movLoading || wallets.length === 0}>
-            {movLoading ? "Cargando…" : "Cargar / actualizar movimientos"}
-          </button>
+      {/* Cabecera: título, actualizar y herramientas */}
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <ArrowLeftRight size={17} strokeWidth={2.25} style={{ color: "var(--dim)" }} />
+          <div className="font-display text-[15px] font-semibold truncate">Movimientos</div>
         </div>
-        <MobileFold summary="ℹ Cómo se leen los movimientos" className="text-[11.5px] mb-1" style={{ color: "var(--dim)" }}>
-          BTC: se toma la dirección de destino de mayor valor como contraparte (puede haber más de una salida por transacción). ETH: origen/destino directo, incluye tokens ERC-20. TRON: por ahora solo movimientos TRC-20 (USDT/USDC).
-        </MobileFold>
-        {movErr && <div className="text-xs" style={{ color: "var(--neg)" }}>{movErr}</div>}
-        {wallets.length === 0 && <div className="text-[12.5px]" style={{ color: "var(--dim)" }}>Añade al menos una dirección en la pestaña Portafolio primero.</div>}
-
-        {(movements.some((m) => !m.verified) || movements.some((m) => isPoisoningSuspect(m.counterparty))) && (
-          <MobileFold summary="⚠ Tokens no verificados o direcciones parecidas" className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "var(--tint)", border: "1px solid var(--amber)", color: "var(--ink)" }}>
-            ⚠ Se detectaron movimientos con <strong>tokens no verificados</strong> y/o <strong>direcciones muy similares a otras que has usado</strong> — señales típicas de intentos de estafa (address poisoning / tokens falsos). No cuentan en tus totales en USD, pero revísalos en la tabla de abajo y verifica cualquier transacción sospechosa directamente en el explorador antes de confiar en ella. Nunca copies una dirección de destino desde aquí sin comparar el texto completo.
-          </MobileFold>
-        )}
-
-        {movements.some((m) => quickAuditFor(m)?.sanctioned || quickAuditFor(m)?.blacklisted) && (
-          <MobileFold summary="🚫 Contraparte sancionada o en lista negra" className="mt-3 p-3 rounded-lg text-[12px]" style={{ background: "rgba(255,107,90,.14)", border: "1px solid var(--neg)", color: "var(--ink)" }}>
-            🚫 Al menos una contraparte en tu historial está en la <strong>lista de sanciones OFAC</strong> o en una <strong>lista negra de stablecoins</strong>. Búscala en la tabla (marcada en rojo) y revisa esa transacción con cuidado — considera consultar asesoría legal si corresponde a montos relevantes.
-          </MobileFold>
-        )}
-
-        {wallets.some((w) => cursors[w.id]) && (
-          <div className="mt-3 pt-3 border-t border-dashed flex flex-wrap gap-2" style={{ borderColor: "var(--line)" }}>
-            {wallets.filter((w) => cursors[w.id]).map((w) => (
-              <button key={w.id} className="cv-btn-ghost" onClick={() => loadMoreForWallet(w)} disabled={loadingMoreId === w.id}>
-                {loadingMoreId === w.id ? "Cargando…" : `Cargar historial anterior de ${w.label}`}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-3.5 pt-3.5 border-t border-dashed" style={{ borderColor: "var(--line)" }}>
-          <button className="cv-btn-ghost" onClick={runDiagnostics} disabled={diagRunning}>
-            {diagRunning ? "Probando…" : "Diagnosticar conexión a las APIs"}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button className="cv-btn inline-flex items-center gap-1.5" onClick={loadMovements} disabled={movLoading || wallets.length === 0}>
+            <RefreshCw size={13} className={movLoading ? "animate-spin" : ""} /> {movLoading ? "Cargando…" : "Actualizar"}
           </button>
-          {diag && (
-            <div className="mt-2.5">
-              {diag.map((d) => (
-                <div key={d.name} className="flex gap-2.5 text-xs py-1 items-center">
-                  <span style={{ color: d.ok ? "var(--pos)" : "var(--neg)", width: 14 }}>{d.ok ? "✓" : "✕"}</span>
-                  <span className="w-40 flex-shrink-0">{d.name}</span>
-                  <span className="font-mono" style={{ color: "var(--dim)" }}>{d.detail}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            className="flex items-center justify-center rounded-full flex-shrink-0"
+            style={{ width: 40, height: 40, background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--dim)", cursor: "pointer" }}
+            onClick={() => setShowTools(true)} title="Herramientas" aria-label="Herramientas"
+          ><MoreHorizontal size={17} /></button>
         </div>
       </div>
 
-      {wallets.length > 0 && (
-        <div className="cv-card cv-card-hover p-4 sm:p-5 mb-3 sm:mb-4 order-2">
-          <div className="font-display text-sm font-semibold mb-2.5">Movimientos por wallet</div>
-          <div className="flex sm:grid sm:grid-cols-2 gap-2.5 overflow-x-auto sm:overflow-visible snap-x -mx-1 px-1 pb-1 sm:pb-0 sm:mx-0 sm:px-0">
-            {walletSummary.map((ws) => (
-              <button
-                key={ws.wallet.id}
-                onClick={() => setWalletFilter(walletFilter === ws.wallet.id ? "all" : ws.wallet.id)}
-                className="text-left rounded-lg p-3 transition-colors flex-shrink-0 w-[224px] sm:w-auto snap-start"
-                style={{
-                  background: walletFilter === ws.wallet.id ? "rgba(62,213,152,.14)" : "var(--panel2)",
-                  border: `1px solid ${walletFilter === ws.wallet.id ? "var(--pos)" : "var(--line)"}`,
-                  cursor: "pointer",
-                }}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="min-w-0 truncate text-sm font-medium">{ws.wallet.label} <span className="text-[10.5px]" style={{ color: "var(--dim)" }}>· {ws.wallet.chain}</span></span>
-                  {ws.pending > 0 && (
-                    <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--tint)", color: "var(--amber)" }}>⏳ {ws.pending}</span>
-                  )}
-                </div>
-                <div className="truncate text-[11.5px]" style={{ color: "var(--dim)" }}>{ws.count} movimiento{ws.count !== 1 ? "s" : ""}{ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}</div>
-                <div className="flex gap-3 text-[11.5px] font-mono mt-1">
-                  <span style={{ color: "var(--pos)" }}>+{fmtUSD(ws.inUsd)}</span>
-                  <span style={{ color: "var(--neg)" }}>−{fmtUSD(ws.outUsd)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-          {walletFilter !== "all" && (
-            <button className="cv-btn-ghost mt-3" onClick={() => setWalletFilter("all")}>✕ Quitar filtro de wallet</button>
-          )}
-        </div>
+      {movErr && <div className="text-xs mb-3" style={{ color: "var(--neg)" }}>{movErr}</div>}
+      {wallets.length === 0 && <div className="text-[12.5px] mb-3" style={{ color: "var(--dim)" }}>Añade al menos una dirección en la pestaña Portafolio primero.</div>}
+
+      {hasSanctioned && (
+        <details className="mb-2.5 rounded-xl px-3.5 py-2.5 text-[12px]" style={{ background: "rgba(255,107,90,.12)", border: "1px solid var(--neg)", color: "var(--ink)" }}>
+          <summary className="cursor-pointer font-semibold flex items-center gap-1.5" style={{ listStyle: "none" }}><Ban size={13} style={{ color: "var(--neg)" }} /> Contraparte sancionada o en lista negra <span className="font-normal" style={{ color: "var(--faint)" }}>· ver más</span></summary>
+          <div className="mt-2">Al menos una contraparte en tu historial está en la <strong>lista de sanciones OFAC</strong> o en una <strong>lista negra de stablecoins</strong>. Búscala en la lista (marcada en rojo) y revisa esa transacción con cuidado — considera consultar asesoría legal si corresponde a montos relevantes.</div>
+        </details>
+      )}
+      {hasUnverified && (
+        <details className="mb-2.5 rounded-xl px-3.5 py-2.5 text-[12px]" style={{ background: "var(--tint)", border: "1px solid var(--amber)", color: "var(--ink)" }}>
+          <summary className="cursor-pointer font-semibold flex items-center gap-1.5" style={{ listStyle: "none" }}><TriangleAlert size={13} style={{ color: "var(--amber)" }} /> Tokens no verificados o direcciones parecidas <span className="font-normal" style={{ color: "var(--faint)" }}>· ver más</span></summary>
+          <div className="mt-2">Se detectaron movimientos con <strong>tokens no verificados</strong> y/o <strong>direcciones muy similares a otras que has usado</strong> — señales típicas de intentos de estafa (address poisoning / tokens falsos). No cuentan en tus totales en USD, pero revísalos en la lista y verifica cualquier transacción sospechosa directamente en el explorador antes de confiar en ella. Nunca copies una dirección de destino desde aquí sin comparar el texto completo.</div>
+        </details>
       )}
 
-      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-4 order-4 md:order-3">
-        <div className="flex items-center gap-2 mb-2.5"><UsersIcon size={16} strokeWidth={2.25} style={{ color: "var(--ink)" }} /><div className="font-display text-sm font-semibold">Aliados</div></div>
-        <div className="flex flex-col sm:flex-row gap-2 mb-2.5">
-          <input className="cv-input w-full sm:flex-1 sm:max-w-[260px]" placeholder="Nombre del aliado (ej. Proveedor Insumos)" value={newAliadoName} onChange={(e) => setNewAliadoName(e.target.value)} />
-          <button className="cv-btn-ghost cv-icon-btn justify-center" onClick={addAliado}><Plus size={13} /> Crear aliado</button>
+      {/* Vistas internas */}
+      <div className="mb-4">
+        <div className="cv-subtabs" role="tablist" style={{ width: "fit-content" }}>
+          {([
+            ["actividad", "Actividad", null],
+            ["clasificar", "Por clasificar", pendingCount || null],
+            ["aliados", "Aliados", aliados.length || null],
+            ["resumen", "Resumen", null],
+          ] as [InnerView, string, number | null][]).map(([id, label, count]) => (
+            <button key={id} role="tab" aria-selected={view === id} className="cv-subtab" data-active={view === id} onClick={(e) => { setView(id); e.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" }); }}>
+              {label}{count !== null && <span className="cv-subtab-count">{count}</span>}
+            </button>
+          ))}
         </div>
-        {aliados.length === 0 ? (
-          <div className="text-[12.5px]" style={{ color: "var(--dim)" }}>Crea aliados y asígnalos a cada movimiento saliente en la tabla de abajo.</div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {aliados.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => setSelectedAliadoId(selectedAliadoId === a.id ? null : a.id)}
-                className="text-xs rounded-full border px-3 py-1 cursor-pointer"
-                style={{
-                  background: selectedAliadoId === a.id ? "var(--accent)" : "var(--panel2)",
-                  color: selectedAliadoId === a.id ? "var(--panel)" : "var(--ink)",
-                  borderColor: selectedAliadoId === a.id ? "var(--accent)" : "var(--line)",
-                  fontWeight: selectedAliadoId === a.id ? 600 : 400,
-                }}
-              >
-                {a.name} <span style={{ opacity: 0.7 }}>· {a.addresses.length} dir.</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {selectedAliado && (
-          <div className="mt-4 pt-4 border-t border-dashed" style={{ borderColor: "var(--line)" }}>
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="font-display text-[15px] font-semibold">{selectedAliado.name}</div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button className="cv-btn-ghost text-[11.5px]" onClick={() => deleteAliado(selectedAliado.id)}>Eliminar</button>
-                <button className="cv-x" onClick={() => setSelectedAliadoId(null)}><X size={18} /></button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              <div className="rounded-lg p-4" style={{ background: "var(--panel2)" }}>
-                <div className="text-[11px] uppercase tracking-wide mb-1" style={{ color: "var(--dim)" }}>Le has pagado</div>
-                <div className="font-mono text-xl font-semibold" style={{ color: "var(--neg)" }}>{fmtUSD(selectedAliadoTotals.outUsd)}</div>
-                <div className="text-xs font-mono mt-1" style={{ color: "var(--dim)" }}>
-                  {Object.entries(selectedAliadoTotals.outAssets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ") || "—"}
-                </div>
-              </div>
-              <div className="rounded-lg p-4" style={{ background: "var(--panel2)" }}>
-                <div className="text-[11px] uppercase tracking-wide mb-1" style={{ color: "var(--dim)" }}>Te ha transferido</div>
-                <div className="font-mono text-xl font-semibold" style={{ color: "var(--pos)" }}>{fmtUSD(selectedAliadoTotals.inUsd)}</div>
-                <div className="text-xs font-mono mt-1" style={{ color: "var(--dim)" }}>
-                  {Object.entries(selectedAliadoTotals.inAssets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ") || "—"}
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <div className="text-[13px] font-medium mb-2">Direcciones conocidas de este aliado</div>
-              <div className="text-[11px] mb-2" style={{ color: "var(--dim)" }}>
-                Si este aliado te cobra desde varias wallets, añádelas todas aquí — así cualquier movimiento hacia cualquiera de ellas se etiqueta automáticamente.
-              </div>
-              {selectedAliado.addresses.length === 0 ? (
-                <div className="text-[12px] mb-2" style={{ color: "var(--dim)" }}>Aún no hay direcciones registradas.</div>
-              ) : (
-                selectedAliado.addresses.map((ad) => (
-                  <div key={ad.address} className="flex items-center justify-between py-1.5 text-[12px]">
-                    <span className="font-mono">{ad.chain} · {shortAddr(ad.address)}</span>
-                    <button className="cv-x" onClick={() => removeAddressFromAliado(selectedAliado.id, ad.address)}>✕</button>
-                  </div>
-                ))
-              )}
-              <div className="flex flex-col sm:flex-row gap-2 mt-2 sm:flex-wrap">
-                <select className="cv-select w-full sm:w-auto" value={detailChain} onChange={(e) => setDetailChain(e.target.value as Chain)}>
-                  {(Object.keys(CHAIN_LABEL) as Chain[]).map((c) => <option key={c} value={c}>{CHAIN_LABEL[c]}</option>)}
-                </select>
-                <input className="cv-input w-full sm:flex-1 sm:min-w-[160px]" placeholder="Dirección" value={detailAddr} onChange={(e) => setDetailAddr(e.target.value)} />
-                <button className="cv-btn-ghost cv-icon-btn" onClick={() => { addAddressToAliado(selectedAliado.id, detailChain, detailAddr); setDetailAddr(""); }}><Plus size={13} /> Añadir dirección</button>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                <div className="text-[13px] font-medium">Movimientos a este aliado</div>
-                {selectedAliadoMovements.length > 0 && (
-                  <button className="cv-btn-ghost" onClick={() => exportAliado(selectedAliado.name, selectedAliadoMovements)}><Download size={13} className="inline -mt-0.5 mr-1" />Exportar CSV</button>
-                )}
-              </div>
-              {selectedAliadoMovements.length === 0 ? (
-                <div className="text-[12px]" style={{ color: "var(--dim)" }}>Sin movimientos todavía.</div>
-              ) : (
-                <div className="cv-scroll-x">
-                <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-                  <thead><tr className="text-left text-[11px] uppercase" style={{ color: "var(--dim)" }}>
-                    <th className="p-1.5">Fecha</th><th className="p-1.5">Wallet</th><th className="p-1.5">Monto</th><th className="p-1.5">Contraparte</th><th className="p-1.5">Concepto</th><th className="p-1.5">Aliado</th>
-                  </tr></thead>
-                  <tbody>
-                    {selectedAliadoMovements.map((m) => (
-                      <tr key={`${m.key}:${(m as any).walletId}`} className="border-t align-top" style={{ borderColor: "var(--line)" }}>
-                        <td className="p-1.5 text-xs whitespace-nowrap" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
-                        <td className="p-1.5 text-xs">{m.walletLabel}</td>
-                        <td className="p-1.5 font-mono text-xs whitespace-nowrap" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
-                          {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}{!m.verified && " ⚠"}
-                        </td>
-                        <td className="p-1.5">
-                          <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
-                        </td>
-                        <td className="p-1.5">
-                          <ConceptoInput
-                            className="cv-input w-full min-w-[140px] py-1 px-2"
-                            placeholder="ej. compra insumos"
-                            value={effectiveConcepto(m)}
-                            onSave={(concepto) => saveClassification(m.key, { concepto })}
-                          />
-                        </td>
-                        <td className="p-1.5">
-                          <select className="cv-select" value={effectiveAliadoId(m) || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)}>
-                            <option value="">Sin clasificar</option>
-                            {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                            <option value="__new__">+ Nuevo aliado…</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
-      {(movements.some((m) => m.direction === "out") || movements.some((m) => m.direction === "in")) && (
-        <div className={`grid grid-cols-1 gap-4 mb-4 order-5 md:order-4 ${summaryRows.length > 0 && summaryRowsIn.length > 0 ? "sm:grid-cols-2" : ""}`}>
-          {summaryRows.length > 0 && (
-            <div className="cv-card cv-card-hover p-5">
-              <div className="font-display text-sm font-semibold mb-1">Gasto por aliado</div>
-              <div className="text-[11px] mb-2.5" style={{ color: "var(--dim)" }}>Valor USD aproximado al precio actual.</div>
-              <div className="md:hidden space-y-2">
-                {summaryRows.map((r) => (
-                  <div key={r.id} className="rounded-xl p-3" style={{ background: "var(--panel2)" }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium truncate" style={{ color: r.id === "sin_clasificar" ? "var(--dim)" : "var(--ink)" }}>{nameFor(r.id)}</span>
-                      <span className="font-mono text-[13px] font-bold flex-shrink-0" style={{ color: "var(--neg)" }}>{fmtUSD(r.usdApprox)}</span>
-                    </div>
-                    <div className="text-[11px] font-mono mt-1" style={{ color: "var(--dim)" }}>
-                      {r.count} mov · {Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <table className="w-full border-collapse hidden md:table">
-                <thead><tr className="text-left text-[11px] uppercase" style={{ color: "var(--dim)" }}>
-                  <th className="p-2">Aliado</th><th className="p-2">Mov.</th><th className="p-2">Montos</th><th className="p-2">Aprox. USD</th>
-                </tr></thead>
-                <tbody>
-                  {summaryRows.map((r) => (
-                    <tr key={r.id} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
-                      <td className="p-2 font-medium" style={{ color: r.id === "sin_clasificar" ? "var(--dim)" : "var(--ink)" }}>{nameFor(r.id)}</td>
-                      <td className="p-2" style={{ color: "var(--dim)" }}>{r.count}</td>
-                      <td className="p-2 font-mono">{Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}</td>
-                      <td className="p-2 font-mono font-semibold" style={{ color: "var(--neg)" }}>{fmtUSD(r.usdApprox)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {internalTotal.count > 0 && (
-                <div className="text-[11.5px] mt-2.5 pt-2.5 border-t border-dashed" style={{ borderColor: "var(--line)", color: "var(--dim)" }}>
-                  + {internalTotal.count} transferencia{internalTotal.count > 1 ? "s" : ""} entre tus propias wallets (
-                  {Object.entries(internalTotal.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}) — no cuentan como pagos a terceros.
-                </div>
-              )}
-              {feeTotal.count > 0 && (
-                <div className="text-[11.5px] mt-2 pt-2 border-t border-dashed" style={{ borderColor: "var(--line)", color: "#6B4FBB" }}>
-                  💳 {feeTotal.count} comisión{feeTotal.count > 1 ? "es" : ""} de red por (
-                  {Object.entries(feeTotal.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}) ≈ {fmtUSD(feeTotal.usdApprox)} — tampoco cuentan como pagos a terceros.
-                </div>
-              )}
-            </div>
-          )}
-          {summaryRowsIn.length > 0 && (
-            <div className="cv-card cv-card-hover p-5">
-              <div className="font-display text-sm font-semibold mb-1">Recibido de aliado</div>
-              <div className="text-[11px] mb-2.5" style={{ color: "var(--dim)" }}>Valor USD aproximado al precio actual.</div>
-              <div className="md:hidden space-y-2">
-                {summaryRowsIn.map((r) => (
-                  <div key={r.id} className="rounded-xl p-3" style={{ background: "var(--panel2)" }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium truncate" style={{ color: r.id === "sin_clasificar" ? "var(--dim)" : "var(--ink)" }}>{nameFor(r.id)}</span>
-                      <span className="font-mono text-[13px] font-bold flex-shrink-0" style={{ color: "var(--pos)" }}>{fmtUSD(r.usdApprox)}</span>
-                    </div>
-                    <div className="text-[11px] font-mono mt-1" style={{ color: "var(--dim)" }}>
-                      {r.count} mov · {Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <table className="w-full border-collapse hidden md:table">
-                <thead><tr className="text-left text-[11px] uppercase" style={{ color: "var(--dim)" }}>
-                  <th className="p-2">Aliado</th><th className="p-2">Mov.</th><th className="p-2">Montos</th><th className="p-2">Aprox. USD</th>
-                </tr></thead>
-                <tbody>
-                  {summaryRowsIn.map((r) => (
-                    <tr key={r.id} className="cv-row border-t" style={{ borderColor: "var(--line)" }}>
-                      <td className="p-2 font-medium" style={{ color: r.id === "sin_clasificar" ? "var(--dim)" : "var(--ink)" }}>{nameFor(r.id)}</td>
-                      <td className="p-2" style={{ color: "var(--dim)" }}>{r.count}</td>
-                      <td className="p-2 font-mono">{Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · ")}</td>
-                      <td className="p-2 font-mono font-semibold" style={{ color: "var(--pos)" }}>{fmtUSD(r.usdApprox)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="cv-card cv-card-hover p-4 sm:p-5 mb-4 order-3 md:order-5">
-        {/* ---- Barra de acciones MÓVIL ---- */}
-        <div className="md:hidden mb-3">
-          <div className="flex gap-2 mb-2.5">
-            <div className="relative flex-1">
+      {/* ============ ACTIVIDAD ============ */}
+      {view === "actividad" && (
+        <div className="cv-tab-in">
+          <div className="flex gap-2 mb-2.5 items-center">
+            <div className="relative flex-1 min-w-0">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--faint)" }} />
-              <input className="cv-input w-full" style={{ paddingLeft: 34 }} placeholder="Buscar…" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+              <input className="cv-input w-full" style={{ paddingLeft: 34 }} placeholder="Buscar dirección, concepto o aliado…" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
             </div>
+            <span className="hidden lg:block flex-shrink-0">
+              <select className="cv-select" value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value as EstadoFilter)} aria-label="Estado">
+                <option value="all">Cualquier estado</option>
+                <option value="pending">Pendientes</option>
+                <option value="classified">Clasificados</option>
+                <option value="internal">Internas</option>
+                <option value="fee">Comisiones de red</option>
+                <option value="suspicious">Polvo / posible fraude</option>
+              </select>
+            </span>
             <button
               className="cv-btn-ghost cv-icon-btn flex-shrink-0"
               style={activeFilterCount > 0 ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
               onClick={() => setShowFilterSheet(true)}
             >
-              <SlidersHorizontal size={14} /> Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              <SlidersHorizontal size={14} /> <span className="hidden sm:inline">Filtros</span>{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
             </button>
-            <button className="cv-btn-ghost cv-icon-btn flex-shrink-0" onClick={() => setShowExportSheet(true)}>
-              <Download size={14} />
+            <button className="cv-btn-ghost cv-icon-btn flex-shrink-0" onClick={() => setShowExportSheet(true)} title="Exportar" aria-label="Exportar">
+              <Download size={14} /> <span className="hidden sm:inline">Exportar</span>
             </button>
           </div>
-        </div>
 
-        {/* ---- Filtros ESCRITORIO ---- */}
-        <div className="hidden md:flex gap-2 mb-3 flex-wrap items-center">
-          <select className="cv-select" value={dirFilter} onChange={(e) => setDirFilter(e.target.value as any)}>
-            <option value="all">Todas</option><option value="out">Salidas</option><option value="in">Entradas</option>
-          </select>
-          <select className="cv-select" value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value as any)}>
-            <option value="all">Cualquier estado</option>
-            <option value="pending">⏳ Pendientes</option>
-            <option value="classified">✓ Clasificados</option>
-            <option value="internal">↔ Internas</option>
-            <option value="fee">💳 Comisiones de red</option>
-            <option value="suspicious">🚩 Polvo / posible fraude</option>
-          </select>
-          <select className="cv-select" value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)}>
-            <option value="all">Todas las wallets</option>
-            {wallets.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
-          </select>
-          <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: "var(--dim)" }}>
-            <input type="date" className="cv-input py-1 px-2" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <input type="date" className="cv-input py-1 px-2" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </span>
-          <input className="cv-input flex-1 min-w-[160px]" placeholder="Buscar dirección, concepto o aliado…" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-          <button className="cv-btn-ghost" onClick={exportFiltered}><Download size={13} className="inline -mt-0.5 mr-1" />Exportar CSV</button>
-          <button className="cv-btn-ghost" onClick={() => generateStatement("pdf")} disabled={statementGenerating !== null}>
-            {statementGenerating === "pdf" ? "Generando…" : (<><Download size={13} className="inline -mt-0.5 mr-1" />Estado de cuenta (PDF)</>)}
-          </button>
-          <button className="cv-btn-ghost" onClick={() => generateStatement("excel")} disabled={statementGenerating !== null}>
-            {statementGenerating === "excel" ? "Generando…" : (<><Download size={13} className="inline -mt-0.5 mr-1" />Estado de cuenta (Excel)</>)}
-          </button>
-        </div>
-        {/* Resumen de flujo — tarjetas en móvil */}
-        <div className="md:hidden grid grid-cols-3 gap-2 mb-3">
-          <div className="rounded-xl p-2.5 text-center" style={{ background: "rgba(62,213,152,.14)" }}>
-            <div className="text-[9.5px] uppercase tracking-wide font-semibold" style={{ color: "var(--pos)" }}>Entradas</div>
-            <div className="font-mono text-[12.5px] font-bold mt-0.5" style={{ color: "var(--pos)" }}>{fmtUSD(flowSummary.inUsd)}</div>
-          </div>
-          <div className="rounded-xl p-2.5 text-center" style={{ background: "rgba(255,107,90,.14)" }}>
-            <div className="text-[9.5px] uppercase tracking-wide font-semibold" style={{ color: "var(--neg)" }}>Salidas</div>
-            <div className="font-mono text-[12.5px] font-bold mt-0.5" style={{ color: "var(--neg)" }}>{fmtUSD(flowSummary.outUsd)}</div>
-          </div>
-          <div className="rounded-xl p-2.5 text-center" style={{ background: "var(--panel2)" }}>
-            <div className="text-[9.5px] uppercase tracking-wide font-semibold" style={{ color: "var(--dim)" }}>Neto</div>
-            <div className="font-mono text-[12.5px] font-bold mt-0.5" style={{ color: "var(--ink)" }}>{fmtUSD(flowSummary.inUsd - flowSummary.outUsd)}</div>
-          </div>
-        </div>
-        <div className="md:hidden text-[11.5px] mb-3" style={{ color: "var(--dim)" }}>
-          {filteredMovements.length} movimiento{filteredMovements.length !== 1 ? "s" : ""}{dustHiddenCount > 0 ? ` · ${dustHiddenCount} ocultos` : ""}
-          {flowSummary.feeUsd > 0 && <> · <span style={{ color: "#6B4FBB" }}>{fmtUSD(flowSummary.feeUsd)} en comisiones</span></>}
-        </div>
-
-        <div className="flex gap-x-4 gap-y-1.5 mb-3 flex-wrap items-center text-[12px]">
-          <span className="hidden md:inline" style={{ color: "var(--dim)" }}>{filteredMovements.length} movimientos</span>
-          <span className="hidden md:inline" style={{ color: "var(--pos)" }}>Entradas: {fmtUSD(flowSummary.inUsd)}</span>
-          <span className="hidden md:inline" style={{ color: "var(--neg)" }}>Salidas: {fmtUSD(flowSummary.outUsd)}</span>
-          <span className="hidden md:inline" style={{ color: "var(--dim)" }}>Neto: {fmtUSD(flowSummary.inUsd - flowSummary.outUsd)}</span>
-          {flowSummary.feeUsd > 0 && <span className="hidden md:inline" style={{ color: "#6B4FBB" }}>Comisiones: {fmtUSD(flowSummary.feeUsd)}</span>}
-          {pendingCount > 0 && estadoFilter !== "pending" && (
-            <button
-              onClick={() => setEstadoFilter("pending")}
-              className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              style={{ background: "var(--tint)", color: "var(--ink)", border: "1px solid var(--amber)", cursor: "pointer" }}
-            >
-              ⏳ {pendingCount} pendiente{pendingCount > 1 ? "s" : ""} por categorizar
-            </button>
-          )}
-          {visibleMovements.some((m) => !isInternalTransfer(m) && m.counterparty) && (
-            <button
-              onClick={() => setShowGroupClassifier((v: boolean) => !v)}
-              className="cv-icon-btn rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              style={{ background: showGroupClassifier ? "var(--ink)" : "rgba(62,213,152,.14)", color: showGroupClassifier ? "var(--panel)" : "var(--pos)", border: "1px solid var(--pos)", cursor: "pointer" }}
-            >
-              <UsersIcon size={11} /> Ver por contraparte
-            </button>
-          )}
-        </div>
-
-        {showGroupClassifier && (
-          <div className="rounded-lg p-3.5 mb-4" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-              <div className="text-[11.5px]" style={{ color: "var(--dim)" }}>
-                Agrupado por dirección — {groupViewMode === "pending" ? "clasifica una vez y aplica a todas las pendientes hacia esa dirección." : "todo tu historial con cada dirección, para identificar fácil de quién es."}
-              </div>
-              <div className="flex rounded-full p-1 flex-shrink-0" style={{ background: "var(--panel2)" }}>
-                <button
-                  onClick={() => setGroupViewMode("pending")}
-                  className="rounded-full px-3 py-1 text-[11px] font-semibold"
-                  style={{ background: groupViewMode === "pending" ? "var(--ink)" : "transparent", color: groupViewMode === "pending" ? "var(--panel)" : "var(--dim)" }}
-                >
-                  Pendientes
-                </button>
-                <button
-                  onClick={() => setGroupViewMode("all")}
-                  className="rounded-full px-3 py-1 text-[11px] font-semibold"
-                  style={{ background: groupViewMode === "all" ? "var(--ink)" : "transparent", color: groupViewMode === "all" ? "var(--panel)" : "var(--dim)" }}
-                >
-                  Todas
-                </button>
-              </div>
+          {/* Wallets como filtro rápido */}
+          {wallets.length > 0 && (
+            <div className="cv-scroll-x flex gap-2 mb-3 pb-1" style={{ scrollbarWidth: "none" }}>
+              <button className="cv-tag flex-shrink-0" style={{ padding: "7px 13px", fontSize: 12, cursor: "pointer", border: `1px solid ${walletFilter === "all" ? "var(--accent)" : "var(--line)"}`, background: walletFilter === "all" ? "var(--tint)" : "var(--panel)", color: walletFilter === "all" ? "var(--accent)" : "var(--dim)" }} onClick={() => setWalletFilter("all")}>Todas</button>
+              {walletSummary.map((ws) => {
+                const on = walletFilter === ws.wallet.id;
+                return (
+                  <button key={ws.wallet.id} className="cv-tag flex-shrink-0" title={`${ws.count} movimiento${ws.count !== 1 ? "s" : ""}${ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}`}
+                    style={{ padding: "5px 12px 5px 6px", fontSize: 12, gap: 6, cursor: "pointer", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--tint)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink)" }}
+                    onClick={() => setWalletFilter(on ? "all" : ws.wallet.id)}>
+                    <ChainBadge chain={ws.wallet.chain} size={18} /> {ws.wallet.label}
+                    {ws.pending > 0 && <span className="font-mono text-[10.5px] rounded-full px-1.5" style={{ background: "var(--accent)", color: "#fff" }}>{ws.pending}</span>}
+                  </button>
+                );
+              })}
             </div>
-            {groupViewMode === "pending" && (
-            <div className="mb-3.5 rounded-lg p-3" style={{ background: "#F1EEFB" }}>
-              <div className="text-[11.5px] mb-2" style={{ color: "#6B4FBB" }}>
-                💳 Marcar automáticamente como comisión de red los grupos menores a:
+          )}
+
+          {/* Flujo del período / filtro actual */}
+          <div className="cv-card grid grid-cols-3 mb-3 overflow-hidden">
+            {([["Entradas", flowSummary.inUsd, "var(--pos)", "+"], ["Salidas", flowSummary.outUsd, "var(--neg)", "−"], ["Neto", Math.abs(net), "var(--ink)", net < 0 ? "−" : ""]] as const).map(([label, val, color, sign], i) => (
+              <div key={label} className="px-3 py-3 sm:px-5 min-w-0" style={{ borderLeft: i > 0 ? "1px solid var(--line)" : "none" }}>
+                <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--faint)" }}>{label}</div>
+                <div className="font-mono font-bold mt-0.5 truncate" style={{ color, fontSize: "clamp(12.5px, 3.6vw, 19px)" }}>{sign}{fmtUSD(val)}</div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium" style={{ color: "#6B4FBB" }}>$</span>
-                <input className="cv-input w-20 py-1 px-2" value={feeThreshold} onChange={(e) => setFeeThreshold(e.target.value)} />
-                <button className="cv-btn-ghost flex-1 sm:flex-none" style={{ borderColor: "#6B4FBB", color: "#6B4FBB" }} onClick={markSmallGroupsAsFee} disabled={markingFees}>
-                  {markingFees ? "Marcando…" : "Aplicar"}
-                </button>
-              </div>
-            </div>
+            ))}
+          </div>
+
+          <div className="flex gap-x-3 gap-y-1.5 mb-2 flex-wrap items-center text-[11.5px] px-0.5" style={{ color: "var(--dim)" }}>
+            <span>{filteredMovements.length} movimiento{filteredMovements.length !== 1 ? "s" : ""}{dustHiddenCount > 0 ? ` · ${dustHiddenCount} ocultos` : ""}</span>
+            {flowSummary.feeUsd > 0 && <span>· {fmtUSD(flowSummary.feeUsd)} en comisiones</span>}
+            {pendingCount > 0 && (
+              <button className="cv-tag" style={{ background: "var(--tint)", color: "var(--accent)", border: "1px solid var(--accent)", cursor: "pointer", padding: "4px 10px" }} onClick={() => setView("clasificar")}>
+                <Clock size={11} /> {pendingCount} por clasificar <ChevronRight size={11} />
+              </button>
             )}
-            {pendingGroups.length === 0 ? (
-              <div className="text-[12.5px] text-center py-4" style={{ color: "var(--dim)" }}>
-                {groupViewMode === "pending" ? "No hay transacciones pendientes por clasificar." : "No hay movimientos con contraparte para mostrar."}
+          </div>
+
+          {estadoFilter === "suspicious" ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-xl px-3.5 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
+              <span className="inline-flex items-center gap-1.5"><Flag size={12} style={{ color: "var(--accent)" }} /> Viendo solo <strong>polvo y posible fraude</strong>.</span>
+              <button className="cv-btn-ghost" onClick={() => setEstadoFilter("all")}>Volver a mis movimientos</button>
+            </div>
+          ) : suspiciousCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-xl px-3.5 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
+              <span className="inline-flex items-center gap-1.5"><Flag size={12} style={{ color: "var(--accent)" }} /> {showSuspicious ? `Mostrando ${suspiciousCount}` : `${suspiciousCount} ocultas:`} entradas de polvo / posible fraude{showSuspicious ? " mezcladas en la lista" : ""}.</span>
+              <button className="cv-btn-ghost" onClick={() => setEstadoFilter("suspicious")}>Verlas por separado</button>
+              <label className="flex items-center gap-1.5 cursor-pointer text-[11.5px]">
+                <input type="checkbox" checked={showSuspicious} onChange={(e) => setShowSuspicious(e.target.checked)} style={{ accentColor: "var(--accent)" }} /> Incluirlas
+              </label>
+            </div>
+          ) : null}
+
+          {filteredMovements.length === 0 ? (
+            <div className="cv-card p-8 text-center text-[12.5px]" style={{ color: "var(--dim)" }}>
+              {movements.length === 0 ? "Aún no hay movimientos cargados. Toca «Actualizar» para leerlos de la red." : "Sin movimientos para estos filtros."}
+            </div>
+          ) : (
+            dayGroups.map((g) => (
+              <div key={g.label} className="mb-3">
+                <div className="flex items-center gap-2 px-1 mb-1.5">
+                  <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: "var(--faint)" }}>{g.label}</span>
+                  <span className="flex-1 h-px" style={{ background: "var(--line)" }} />
+                  <span className="font-mono text-[10.5px]" style={{ color: "var(--faint)" }}>{g.items.length}</span>
+                </div>
+                <div className="cv-card px-2 sm:px-3 cv-daylist">{g.items.map(movementRow)}</div>
               </div>
-            ) : (
-            <div className="space-y-2.5">
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ============ POR CLASIFICAR ============ */}
+      {view === "clasificar" && (
+        <div className="cv-tab-in">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <div className="text-[12px] min-w-0" style={{ color: "var(--dim)" }}>
+              Agrupado por dirección — {groupViewMode === "pending" ? "clasifica una vez y aplica a todas las pendientes de esa contraparte." : "todo tu historial con cada dirección, para identificar de quién es."}
+            </div>
+            <div className="cv-subtabs flex-shrink-0">
+              <button className="cv-subtab" style={{ padding: "6px 12px", fontSize: 11.5 }} data-active={groupViewMode === "pending"} onClick={() => setGroupViewMode("pending")}>Pendientes</button>
+              <button className="cv-subtab" style={{ padding: "6px 12px", fontSize: 11.5 }} data-active={groupViewMode === "all"} onClick={() => setGroupViewMode("all")}>Todas</button>
+            </div>
+          </div>
+
+          {groupViewMode === "pending" && pendingGroups.length > 0 && (
+            <div className="cv-card px-3.5 py-3 mb-3 flex items-center gap-2.5 flex-wrap text-[12px]" style={{ color: "var(--dim)" }}>
+              <CreditCard size={14} className="flex-shrink-0" />
+              <span className="min-w-0">Marcar como comisión de red los grupos menores a</span>
+              <span className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="font-mono" style={{ color: "var(--ink)" }}>$</span>
+                <input className="cv-input w-20 py-1 px-2" value={feeThreshold} onChange={(e) => setFeeThreshold(e.target.value)} aria-label="Umbral en dólares" />
+                <button className="cv-btn-ghost" onClick={markSmallGroupsAsFee} disabled={markingFees}>{markingFees ? "Marcando…" : "Aplicar"}</button>
+              </span>
+            </div>
+          )}
+
+          {pendingGroups.length === 0 ? (
+            <div className="cv-card p-8 text-center" style={{ color: "var(--dim)" }}>
+              <CircleCheck size={26} className="mx-auto mb-2" style={{ color: "var(--pos)" }} />
+              <div className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>{groupViewMode === "pending" ? "Todo clasificado" : "Sin contrapartes todavía"}</div>
+              <div className="text-[12px] mt-1">{groupViewMode === "pending" ? "No hay transacciones pendientes por clasificar." : "No hay movimientos con contraparte para mostrar."}</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
               {pendingGroups.map((g) => {
                 const existing = groupExistingAliado(g);
                 const state = groupBatchState[g.key] || {
                   aliadoId: existing.status === "single" ? (aliados.find((a) => a.name === existing.name)?.id || "") : "",
                   concepto: "", applying: false,
                 };
+                const open = expandedGroups.has(g.key);
                 return (
-                  <div key={g.key} className="rounded-lg p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
-                    <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <ChainBadge chain={g.chain} size={20} />
-                        <span className="font-mono text-[12px]">{shortAddr(g.address)}</span>
-                        <button
-                          onClick={() => toggleGroupExpand(g.key)}
-                          className="cv-icon-btn text-[11px] rounded-full px-2 py-0.5"
-                          style={{ background: "var(--tint)", color: "var(--amber)", border: "none", cursor: "pointer" }}
-                        >
-                          {g.movements.length} transacciones{groupWalletCount(g) > 1 ? ` · ${groupWalletCount(g)} wallets` : ""} <ChevronRight size={11} style={{ transform: expandedGroups.has(g.key) ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
-                        </button>
-                        {groupViewMode === "all" && existing.status === "single" && (
-                          <span className="text-[11px] rounded-full px-2 py-0.5" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}>✓ {existing.name}</span>
-                        )}
-                        {groupViewMode === "all" && existing.status === "mixed" && (
-                          <span className="text-[11px] rounded-full px-2 py-0.5" style={{ background: "rgba(255,107,90,.14)", color: "var(--neg)" }}>⚠ clasificación mixta</span>
-                        )}
-                      </div>
-                      <span className="font-mono text-[12px] font-semibold text-right">
-                        {Object.keys(g.totals).length > 0 && (
-                          <span style={{ color: "var(--neg)" }}>{Object.entries(g.totals).map(([a, v]) => `−${fmtAmt(v)} ${a}`).join(" · ")}</span>
-                        )}
-                        {Object.keys(g.totals).length > 0 && Object.keys(g.totalsIn).length > 0 && "  ·  "}
-                        {Object.keys(g.totalsIn).length > 0 && (
-                          <span style={{ color: "var(--pos)" }}>{Object.entries(g.totalsIn).map(([a, v]) => `+${fmtAmt(v)} ${a}`).join(" · ")}</span>
-                        )}
-                      </span>
-                    </div>
-
-                    {expandedGroups.has(g.key) && (
-                      <div className="mb-3 rounded-md overflow-hidden" style={{ border: "1px solid var(--line)" }}>
-                        <div className="text-[10px] px-2 pt-1.5" style={{ color: "var(--faint)" }}>{groupWalletLabels(g).join(" · ")}</div>
-                        <table className="w-full border-collapse">
-                          <thead>
-                            <tr style={{ background: "var(--panel2)" }}>
-                              <th className="text-left text-[10px] uppercase p-1.5" style={{ color: "var(--dim)" }}>Fecha</th>
-                              <th className="text-left text-[10px] uppercase p-1.5" style={{ color: "var(--dim)" }}>Wallet</th>
-                              <th className="text-right text-[10px] uppercase p-1.5" style={{ color: "var(--dim)" }}>Monto</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {g.movements.map((m) => (
-                              <tr key={`${m.key}:${(m as any).walletId}`} style={{ borderTop: "1px solid var(--line)" }}>
-                                <td className="text-[11px] p-1.5" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
-                                <td className="text-[11px] p-1.5 font-medium">{m.walletLabel}</td>
-                                <td className="text-[11px] p-1.5 text-right font-mono" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
-                                  {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap">
-                      <input
-                        className="cv-input w-full sm:flex-1 sm:min-w-[160px]"
-                        placeholder="Concepto — ej. compra insumos"
-                        value={state.concepto}
-                        onChange={(e) => setGroupField(g.key, { concepto: e.target.value })}
-                      />
-                      <select className="cv-select w-full sm:w-auto" value={state.aliadoId} onChange={(e) => setGroupField(g.key, { aliadoId: e.target.value })}>
-                        <option value="">Sin clasificar</option>
-                        {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                        <option value="__new__">+ Nuevo aliado…</option>
-                      </select>
-                      <button className="cv-btn w-full sm:w-auto" onClick={() => applyGroupClassification(g)} disabled={state.applying}>
-                        {state.applying ? "Aplicando…" : `Aplicar a ${g.movements.length}`}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            )}
-          </div>
-        )}
-
-        <div className="hidden md:flex gap-3 mb-3.5 flex-wrap items-center text-[11.5px]" style={{ color: "var(--dim)" }}>
-          <span>Ocultar polvo:</span>
-          <span className="flex items-center gap-1.5">
-            mínimo $ <input className="cv-input w-16 py-1 px-2" value={minUsd} onChange={(e) => setMinUsd(e.target.value)} />
-          </span>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={hideUnpriced} onChange={(e) => setHideUnpriced(e.target.checked)} /> ocultar tokens sin precio conocido (spam)
-          </label>
-          {dustHiddenCount > 0 && <span>· {dustHiddenCount} ocultos</span>}
-        </div>
-
-        {estadoFilter === "suspicious" ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
-            <span>🚩 Viendo solo <strong>polvo y posible fraude</strong> — no se mezclan con tus movimientos.</span>
-            <button className="cv-btn-ghost text-[11.5px]" onClick={() => setEstadoFilter("all")}>Volver a mis movimientos</button>
-          </div>
-        ) : suspiciousCount > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--tint)", color: "var(--ink)" }}>
-            <span>🚩 {showSuspicious ? `Mostrando ${suspiciousCount}` : `${suspiciousCount} ocultas:`} entradas de polvo / posible fraude{showSuspicious ? " mezcladas en la lista" : ""}.</span>
-            <button className="cv-btn-ghost text-[11.5px]" onClick={() => setEstadoFilter("suspicious")}>Verlas por separado</button>
-            <label className="flex items-center gap-1.5 cursor-pointer text-[11.5px]">
-              <input type="checkbox" checked={showSuspicious} onChange={(e) => setShowSuspicious(e.target.checked)} /> Incluirlas en los movimientos
-            </label>
-          </div>
-        ) : null}
-
-        {filteredMovements.length === 0 ? (
-          <div className="text-[12.5px]" style={{ color: "var(--dim)" }}>Sin movimientos para mostrar.</div>
-        ) : (
-          <>
-            {/* Vista móvil: tarjetas */}
-            <div className="md:hidden space-y-2.5">
-              {filteredMovements.map((m) => {
-                const curAliado = effectiveAliadoId(m);
-                const qa = quickAuditFor(m);
-                const pending = isPending(m);
-                const cardId = `${m.key}:${(m as any).walletId}`;
-                const editing = pending || openCards.has(cardId);
-                return (
-                  <div key={cardId} className="rounded-xl p-3.5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(1,45,55,0.05)" }}>
-                    <button type="button" className="flex items-center justify-between gap-2 mb-2 w-full text-left" onClick={() => setDetailMovement(m)} title="Ver detalle de la operación">
-                      <span className="flex items-center gap-1.5 text-[11px] min-w-0" style={{ color: "var(--dim)" }}>
-                        <ChainBadge chain={m.chain} size={16} />
-                        <span className="truncate">{fmtDate(m.date)} · {m.walletLabel}</span>
-                      </span>
-                      {isInternalTransfer(m) ? (
-                        <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "var(--panel)", color: "var(--accent)" }}>interna</span>
-                      ) : effectiveIsFee(m) ? (
-                        <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "#F1EEFB", color: "#6B4FBB" }}>💳 comisión de red</span>
-                      ) : pending ? (
-                        <span className="cv-icon-btn text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> pendiente</span>
-                      ) : (
-                        <span className="cv-icon-btn text-[10.5px] font-medium rounded-full px-2 py-0.5" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> clasificado</span>
-                      )}
-                    </button>
-
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="font-mono text-base font-semibold" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
-                        {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
-                      </div>
-                      <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)} ↗</a>
-                    </div>
-
-                    {(!m.verified || isPoisoningSuspect(m.counterparty) || suspicionFor(m) || qa?.sanctioned || qa?.blacklisted || m.otherCount > 0) && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {suspicionFor(m) && <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>{suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}</span>}
-                        {!m.verified && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>⚠ NO VERIFICADO</span>}
-                        {isPoisoningSuspect(m.counterparty) && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--amber)", color: "var(--ink)" }}>⚠ similar a otra</span>}
-                        {qa?.sanctioned && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>🚫 SANCIONADA</span>}
-                        {qa?.blacklisted && <span className="text-[10px] font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>🚫 LISTA NEGRA</span>}
-                        {m.otherCount > 0 && <span className="text-[10px]" style={{ color: "var(--dim)" }}>+{m.otherCount} más</span>}
-                      </div>
-                    )}
-
-                    {isInternalTransfer(m) ? (
-                      <div className="text-[11.5px] rounded-md px-2.5 py-2 text-center" style={{ background: "var(--panel)", color: "var(--accent)", border: "1px solid var(--line)" }}>
-                        ↔ transferencia a tu wallet "{findOwnWallet(m.chain, m.counterparty)?.label}"
-                      </div>
-                    ) : effectiveIsFee(m) ? (
-                      <div className="flex items-center justify-between text-[11.5px] rounded-md px-2.5 py-2" style={{ background: "#F1EEFB", color: "#6B4FBB", border: "1px solid #E0D6F5" }}>
-                        💳 Comisión de red
-                        <button className="cv-x" onClick={() => saveClassification(m.key, { isFee: false })}>✕</button>
-                      </div>
-                    ) : !editing ? (
-                      <div className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--panel2)" }}>
-                        <div className="min-w-0 text-[12.5px]">
-                          <span className="font-semibold">{aliados.find((a) => a.id === curAliado)?.name || "—"}</span>
-                          {effectiveConcepto(m).trim() && <span style={{ color: "var(--dim)" }}> · {effectiveConcepto(m)}</span>}
-                        </div>
-                        <button className="cv-btn-ghost flex-shrink-0 px-3 py-1 text-[11px]" onClick={() => toggleCard(cardId)}>Editar</button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex gap-1.5">
-                          <ConceptoInput
-                            key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
-                            className="cv-input w-full py-2 px-2.5 text-sm"
-                            placeholder="Concepto — ej. compra insumos"
-                            value={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
-                            onSave={(concepto) => saveClassification(m.key, { concepto })}
-                          />
-                          <button
-                            className="cv-x flex-shrink-0" title="Sugerir con IA" disabled={suggesting === m.key}
-                            onClick={() => suggestForMovement(m)}
-                          >
-                            <Sparkles size={15} className={suggesting === m.key ? "animate-pulse" : ""} />
+                  <div key={g.key} className="cv-card p-3.5 sm:p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <ChainBadge chain={g.chain} size={28} />
+                        <div className="min-w-0">
+                          <div className="font-mono text-[13px] font-semibold" style={{ color: "var(--ink)" }}>{shortAddr(g.address)}</div>
+                          <button onClick={() => toggleGroupExpand(g.key)} className="inline-flex items-center gap-1 text-[11.5px]" style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer" }}>
+                            {g.movements.length} transacci{g.movements.length === 1 ? "ón" : "ones"}{groupWalletCount(g) > 1 ? ` · ${groupWalletCount(g)} wallets` : ""}
+                            <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
                           </button>
                         </div>
-                        {aiSuggestions[m.key]?.aliadoSugerido && (
-                          <div className="text-[10.5px]" style={{ color: "var(--accent)" }}>💡 Podría ser: {aiSuggestions[m.key].aliadoSugerido}</div>
-                        )}
-                        <select className="cv-select w-full py-2" value={curAliado || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)}>
-                          <option value="">Sin clasificar</option>
-                          {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          <option value="__new__">+ Nuevo aliado…</option>
-                        </select>
-                        <div className="flex items-center justify-between gap-2">
-                          <button className="cv-btn-ghost text-[10.5px]" onClick={() => saveClassification(m.key, { isFee: true })}>💳 Marcar como comisión</button>
-                          {!pending && <button className="cv-btn-ghost px-3 py-1 text-[11px]" onClick={() => toggleCard(cardId)}>Listo</button>}
-                        </div>
+                      </div>
+                      <div className="font-mono text-[12.5px] font-semibold text-right flex-shrink-0">
+                        {Object.keys(g.totals).length > 0 && <div style={{ color: "var(--neg)" }}>{Object.entries(g.totals).map(([a, v]) => `−${fmtAmt(v)} ${a}`).join(" · ")}</div>}
+                        {Object.keys(g.totalsIn).length > 0 && <div style={{ color: "var(--pos)" }}>{Object.entries(g.totalsIn).map(([a, v]) => `+${fmtAmt(v)} ${a}`).join(" · ")}</div>}
+                      </div>
+                    </div>
+                    {groupViewMode === "all" && existing.status !== "none" && (
+                      <div className="mb-2.5">
+                        {existing.status === "single"
+                          ? <span className="cv-tag" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> {existing.name}</span>
+                          : <span className="cv-tag" style={{ background: "rgba(255,107,90,.14)", color: "var(--neg)" }}><TriangleAlert size={10} /> clasificación mixta</span>}
                       </div>
                     )}
+                    {open && (
+                      <div className="mb-3 rounded-xl overflow-hidden" style={{ border: "1px solid var(--line)" }}>
+                        <div className="text-[10.5px] px-2.5 pt-2" style={{ color: "var(--faint)" }}>{groupWalletLabels(g).join(" · ")}</div>
+                        {g.movements.map((m) => (
+                          <div key={rowId(m)} className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-[11.5px] border-t first:border-t-0" style={{ borderColor: "var(--line)" }}>
+                            <span className="truncate" style={{ color: "var(--dim)" }}>{fmtDate(m.date)} · <span style={{ color: "var(--ink)" }}>{m.walletLabel}</span></span>
+                            <span className="font-mono flex-shrink-0" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>{m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input className="cv-input w-full sm:flex-1 min-w-0" placeholder="Concepto — ej. compra insumos" value={state.concepto} onChange={(e) => setGroupField(g.key, { concepto: e.target.value })} />
+                      <select className="cv-select w-full sm:w-[160px]" value={state.aliadoId} onChange={(e) => setGroupField(g.key, { aliadoId: e.target.value })} aria-label="Aliado">{aliadoOptions}</select>
+                      <button className="cv-btn w-full sm:w-auto flex-shrink-0" onClick={() => applyGroupClassification(g)} disabled={state.applying}>{state.applying ? "Aplicando…" : `Aplicar a ${g.movements.length}`}</button>
+                    </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* Vista escritorio: tabla */}
-            <div className="hidden md:block overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead><tr className="text-left text-[11px] uppercase" style={{ color: "var(--dim)" }}>
-                <th className="p-2">Estado</th><th className="p-2">Fecha</th><th className="p-2">Wallet</th><th className="p-2">Monto</th><th className="p-2">Contraparte</th><th className="p-2">Concepto</th><th className="p-2">Aliado</th>
-              </tr></thead>
-              <tbody>
-                {filteredMovements.map((m) => {
-                  const curAliado = effectiveAliadoId(m);
-                  const qa = quickAuditFor(m);
-                  const pending = isPending(m);
-                  return (
-                    <tr
-                      key={`${m.key}:${(m as any).walletId}`} className="cv-row border-t" style={{ borderColor: "var(--line)", cursor: "pointer" }}
-                      onClick={() => setDetailMovement(m)} title="Ver detalle de la operación"
-                    >
-                      <td className="p-2">
-                        {isInternalTransfer(m) ? (
-                          <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "var(--panel2)", color: "var(--accent)" }}>interna</span>
-                        ) : effectiveIsFee(m) ? (
-                          <span className="text-[10.5px] rounded-full px-2 py-0.5" style={{ background: "#F1EEFB", color: "#6B4FBB" }}>💳 comisión</span>
-                        ) : pending ? (
-                          <span className="cv-icon-btn text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> pendiente</span>
-                        ) : (
-                          <span className="cv-icon-btn text-[10.5px] font-medium rounded-full px-2 py-0.5" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> clasificado</span>
-                        )}
-                      </td>
-                      <td className="p-2 text-xs whitespace-nowrap" style={{ color: "var(--dim)" }}>{fmtDate(m.date)}</td>
-                      <td className="p-2 text-xs">{m.walletLabel}</td>
-                      <td className="p-2 font-mono whitespace-nowrap" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
-                        {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
-                        {!m.verified && (
-                          <span title="El token dice ser esta moneda pero el contrato no coincide con el oficial — probable token falso/spam." className="ml-1.5 text-[10px] font-sans font-semibold rounded px-1.5 py-0.5" style={{ background: "var(--neg)", color: "var(--panel)" }}>
-                            ⚠ NO VERIFICADO
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-2 min-w-[150px]" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                        <a className="font-mono text-[11.5px]" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a>
-                        {m.otherCount > 0 && <span className="text-[10.5px]" style={{ color: "var(--dim)" }}> +{m.otherCount} más</span>}
-                        {suspicionFor(m) && (
-                          <span title={suspicionFor(m)!.reason} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: suspicionFor(m)!.kind === "fraude" ? "var(--neg)" : "var(--amber)", color: suspicionFor(m)!.kind === "fraude" ? "var(--panel)" : "var(--ink)" }}>
-                            {suspicionFor(m)!.kind === "fraude" ? "🚩" : "🗑"} {suspicionFor(m)!.label.toUpperCase()}
-                          </span>
-                        )}
-                        {isPoisoningSuspect(m.counterparty) && (
-                          <span title="Esta dirección se parece mucho a otra que has usado, pero es distinta — posible address poisoning. No la copies de aquí, verifica siempre en el explorador." className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--amber)", color: "var(--ink)" }}>
-                            ⚠ similar a otra
-                          </span>
-                        )}
-                        {qa?.sanctioned && (
-                          <span title={`Dirección en la lista de sanciones OFAC (${qa.sanctionLists.join(", ")}).`} className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--neg)", color: "var(--panel)" }}>
-                            🚫 SANCIONADA
-                          </span>
-                        )}
-                        {qa?.blacklisted && (
-                          <span title="Esta dirección está en la lista negra de stablecoins (USDT/USDC congelado)." className="text-[10px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap" style={{ background: "var(--neg)", color: "var(--panel)" }}>
-                            🚫 LISTA NEGRA
-                          </span>
-                        )}
-                        </div>
-                      </td>
-                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          <ConceptoInput
-                            key={aiSuggestions[m.key] ? `${m.key}-ai` : m.key}
-                            className="cv-input w-[140px] py-1 px-2"
-                            placeholder="ej. compra insumos"
-                            value={aiSuggestions[m.key]?.concepto ?? effectiveConcepto(m)}
-                            onSave={(concepto) => saveClassification(m.key, { concepto })}
-                          />
-                          {!isInternalTransfer(m) && !effectiveIsFee(m) && (
-                            <button className="cv-x flex-shrink-0" title="Sugerir con IA" disabled={suggesting === m.key} onClick={() => suggestForMovement(m)}>
-                              <Sparkles size={13} className={suggesting === m.key ? "animate-pulse" : ""} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                        {isInternalTransfer(m) ? (
-                          <span className="text-[11px] rounded-full px-2.5 py-1" style={{ background: "var(--panel2)", color: "var(--accent)", border: "1px solid var(--line)" }}>
-                            <ArrowLeftRight size={10} className="inline -mt-0.5 mr-1" />transferencia interna ({findOwnWallet(m.chain, m.counterparty)?.label})
-                          </span>
-                        ) : effectiveIsFee(m) ? (
-                          <span className="cv-icon-btn text-[11px] rounded-full px-2.5 py-1" style={{ background: "#F1EEFB", color: "#6B4FBB", border: "1px solid #E0D6F5" }}>
-                            💳 Comisión de red
-                            <button className="cv-x" style={{ fontSize: 11 }} onClick={() => saveClassification(m.key, { isFee: false })}>✕</button>
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <select className="cv-select" value={curAliado || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)}>
-                              <option value="">Sin clasificar</option>
-                              {aliados.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                              <option value="__new__">+ Nuevo aliado…</option>
-                            </select>
-                            <button className="cv-x" title="Marcar como comisión de red" onClick={() => saveClassification(m.key, { isFee: true })}>💳</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-          </>
-        )}
-      </div>
-
-      </div>
-
-      {/* Hoja de filtros — solo móvil */}
-      {showFilterSheet && (
-        <>
-          <div className="cv-sheet-backdrop md:hidden" onClick={() => setShowFilterSheet(false)} />
-          <div className="cv-sheet md:hidden">
-            <div className="cv-sheet-handle" />
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-display text-base font-bold" style={{ color: "var(--ink)" }}>Filtros</div>
-              <button className="cv-x" onClick={() => setShowFilterSheet(false)}><X size={20} /></button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <div className="cv-eyebrow mb-1.5">Dirección</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {([["all", "Todas"], ["out", "Salidas"], ["in", "Entradas"]] as const).map(([v, l]) => (
-                    <button key={v} onClick={() => setDirFilter(v as any)}
-                      className="rounded-xl py-2.5 text-[13px] font-medium"
-                      style={{ background: dirFilter === v ? "var(--ink)" : "var(--panel2)", color: dirFilter === v ? "var(--panel)" : "var(--ink)", border: "none" }}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="cv-eyebrow mb-1.5">Estado</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {([["all", "Cualquiera"], ["pending", "⏳ Pendientes"], ["classified", "✓ Clasificados"], ["internal", "↔ Internas"], ["fee", "💳 Comisiones"], ["suspicious", "🚩 Polvo / fraude"]] as const).map(([v, l]) => (
-                    <button key={v} onClick={() => setEstadoFilter(v as any)}
-                      className="rounded-xl py-2.5 text-[13px] font-medium"
-                      style={{ background: estadoFilter === v ? "var(--ink)" : "var(--panel2)", color: estadoFilter === v ? "var(--panel)" : "var(--ink)", border: "none" }}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="cv-eyebrow mb-1.5">Wallet</div>
-                <select className="cv-select w-full" value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)}>
-                  <option value="all">Todas las wallets</option>
-                  {wallets.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <div className="cv-eyebrow mb-1.5">Período</div>
-                <div className="flex gap-2">
-                  <input type="date" className="cv-input flex-1" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                  <input type="date" className="cv-input flex-1" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                </div>
-              </div>
-
-              <div>
-                <div className="cv-eyebrow mb-1.5">Ocultar polvo</div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[13px]" style={{ color: "var(--dim)" }}>Mínimo $</span>
-                  <input className="cv-input w-24" value={minUsd} onChange={(e) => setMinUsd(e.target.value)} />
-                </div>
-                <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: "var(--ink)" }}>
-                  <input type="checkbox" checked={hideUnpriced} onChange={(e) => setHideUnpriced(e.target.checked)} style={{ width: 18, height: 18 }} />
-                  Ocultar tokens sin precio (spam)
-                </label>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button className="cv-btn-ghost flex-1" onClick={() => {
-                  setDirFilter("all"); setEstadoFilter("all"); setWalletFilter("all");
-                  setDateFrom(""); setDateTo(""); setSearchText("");
-                }}>Limpiar todo</button>
-                <button className="cv-btn flex-1" onClick={() => setShowFilterSheet(false)}>
-                  Ver {filteredMovements.length} movimientos
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
+          )}
+        </div>
       )}
 
-      {/* Hoja de exportación — solo móvil */}
+      {/* ============ ALIADOS ============ */}
+      {view === "aliados" && (
+        <div className="cv-tab-in">
+          <div className="flex gap-2 mb-3">
+            <input className="cv-input flex-1 min-w-0 sm:max-w-[320px]" placeholder="Nombre del aliado (ej. Proveedor Insumos)" value={newAliadoName} onChange={(e) => setNewAliadoName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addAliado(); }} />
+            <button className="cv-btn inline-flex items-center gap-1.5 flex-shrink-0" onClick={addAliado}><Plus size={14} /> Crear</button>
+          </div>
+          {aliados.length === 0 ? (
+            <div className="cv-card p-8 text-center text-[12.5px]" style={{ color: "var(--dim)" }}>
+              <UsersIcon size={24} className="mx-auto mb-2 opacity-60" />
+              Crea aliados y asígnalos a cada movimiento desde Actividad o Por clasificar.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {aliados.map((a) => {
+                const paid = summaryRows.find((r) => r.id === a.id);
+                const got = summaryRowsIn.find((r) => r.id === a.id);
+                return (
+                  <button key={a.id} className="cv-card cv-card-hover p-4 text-left" style={{ color: "var(--ink)", cursor: "pointer" }} onClick={() => setSelectedAliadoId(a.id)}>
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0" style={{ background: "var(--tint)", color: "var(--accent)" }}>{a.name.charAt(0).toUpperCase()}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-semibold truncate">{a.name}</div>
+                        <div className="text-[11px]" style={{ color: "var(--faint)" }}>{a.addresses.length} direcci{a.addresses.length === 1 ? "ón" : "ones"} · {(paid?.count || 0) + (got?.count || 0)} mov</div>
+                      </div>
+                      <ChevronRight size={15} className="flex-shrink-0" style={{ color: "var(--faint)" }} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl px-3 py-2" style={{ background: "var(--panel2)" }}>
+                        <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--faint)" }}>Pagado</div>
+                        <div className="font-mono text-[13px] font-bold truncate" style={{ color: paid ? "var(--neg)" : "var(--faint)" }}>{paid ? fmtUSD(paid.usdApprox) : "—"}</div>
+                      </div>
+                      <div className="rounded-xl px-3 py-2" style={{ background: "var(--panel2)" }}>
+                        <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--faint)" }}>Recibido</div>
+                        <div className="font-mono text-[13px] font-bold truncate" style={{ color: got ? "var(--pos)" : "var(--faint)" }}>{got ? fmtUSD(got.usdApprox) : "—"}</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ RESUMEN ============ */}
+      {view === "resumen" && (
+        <div className="cv-tab-in">
+          {summaryRows.length === 0 && summaryRowsIn.length === 0 ? (
+            <div className="cv-card p-8 text-center text-[12.5px] mb-3" style={{ color: "var(--dim)" }}>Aún no hay movimientos para resumir.</div>
+          ) : (
+            <div className={`grid grid-cols-1 gap-3 sm:gap-4 mb-3 sm:mb-4 items-start ${summaryRows.length > 0 && summaryRowsIn.length > 0 ? "lg:grid-cols-2" : ""}`}>
+              {summaryRows.length > 0 && summaryCard("Gasto por aliado", summaryRows, maxOut, "var(--neg)")}
+              {summaryRowsIn.length > 0 && summaryCard("Recibido de aliado", summaryRowsIn, maxIn, "var(--pos)")}
+            </div>
+          )}
+          {(internalTotal.count > 0 || feeTotal.count > 0) && (
+            <div className="cv-card p-4 sm:p-5 mb-3 sm:mb-4 text-[12px] space-y-2" style={{ color: "var(--dim)" }}>
+              <div className="font-display text-sm font-semibold" style={{ color: "var(--ink)" }}>No cuentan como pagos a terceros</div>
+              {internalTotal.count > 0 && (
+                <div className="flex items-start gap-2"><ArrowLeftRight size={13} className="flex-shrink-0 mt-0.5" /><span>{internalTotal.count} transferencia{internalTotal.count > 1 ? "s" : ""} entre tus propias wallets <span className="font-mono">({assetsLine(internalTotal.assets)})</span></span></div>
+              )}
+              {feeTotal.count > 0 && (
+                <div className="flex items-start gap-2"><CreditCard size={13} className="flex-shrink-0 mt-0.5" /><span>{feeTotal.count} comisi{feeTotal.count > 1 ? "ones" : "ón"} de red <span className="font-mono">({assetsLine(feeTotal.assets)})</span> ≈ <span className="font-mono" style={{ color: "var(--ink)" }}>{fmtUSD(feeTotal.usdApprox)}</span></span></div>
+              )}
+            </div>
+          )}
+          {wallets.length > 0 && (
+            <div className="cv-card p-4 sm:p-5">
+              <div className="font-display text-sm font-semibold mb-1">Por wallet</div>
+              <div className="text-[11px] mb-2" style={{ color: "var(--faint)" }}>Toca una wallet para ver solo sus movimientos.</div>
+              {walletSummary.map((ws) => (
+                <button key={ws.wallet.id} className="cv-row w-full text-left flex items-center gap-3 py-2.5 px-1.5 border-t rounded-md" style={{ borderColor: "var(--line)", background: "none", borderLeft: "none", borderRight: "none", borderBottom: "none", color: "var(--ink)", cursor: "pointer" }}
+                  onClick={() => { setWalletFilter(ws.wallet.id); setView("actividad"); }}>
+                  <ChainBadge chain={ws.wallet.chain} size={26} />
+                  <span className="min-w-0 flex-1 block">
+                    <span className="flex items-center gap-2"><span className="text-[13px] font-medium truncate">{ws.wallet.label}</span>{ws.pending > 0 && <span className="cv-tag" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> {ws.pending}</span>}</span>
+                    <span className="block text-[11px] truncate" style={{ color: "var(--dim)" }}>{ws.count} movimiento{ws.count !== 1 ? "s" : ""}{ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}</span>
+                  </span>
+                  <span className="text-right font-mono text-[12px] flex-shrink-0">
+                    <span className="block" style={{ color: "var(--pos)" }}>+{fmtUSD(ws.inUsd)}</span>
+                    <span className="block" style={{ color: "var(--neg)" }}>−{fmtUSD(ws.outUsd)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- Hojas ---- */}
+      {showFilterSheet && <Sheet title="Filtros" onClose={() => setShowFilterSheet(false)}>{filterControls}</Sheet>}
+
       {showExportSheet && (
-        <>
-          <div className="cv-sheet-backdrop md:hidden" onClick={() => setShowExportSheet(false)} />
-          <div className="cv-sheet md:hidden">
-            <div className="cv-sheet-handle" />
-            <div className="flex items-center justify-between mb-1">
-              <div className="font-display text-base font-bold" style={{ color: "var(--ink)" }}>Exportar</div>
-              <button className="cv-x" onClick={() => setShowExportSheet(false)}><X size={20} /></button>
+        <Sheet title="Exportar" onClose={() => setShowExportSheet(false)}>
+          <div className="text-[12px] mb-4" style={{ color: "var(--dim)" }}>Incluye los {filteredMovements.length} movimientos que estás viendo ahora, con los filtros aplicados.</div>
+          <div className="space-y-2">
+            <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { generateStatement("pdf"); setShowExportSheet(false); }} disabled={statementGenerating !== null}><Download size={15} /> {statementGenerating === "pdf" ? "Generando…" : "Estado de cuenta (PDF)"}</button>
+            <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { generateStatement("excel"); setShowExportSheet(false); }} disabled={statementGenerating !== null}><Download size={15} /> {statementGenerating === "excel" ? "Generando…" : "Estado de cuenta (Excel)"}</button>
+            <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { exportFiltered(); setShowExportSheet(false); }}><Download size={15} /> Movimientos (CSV)</button>
+          </div>
+        </Sheet>
+      )}
+
+      {showTools && (
+        <Sheet title="Herramientas" onClose={() => setShowTools(false)}>
+          <div className="space-y-4">
+            {olderWallets.length > 0 && (
+              <div>
+                <div className="cv-eyebrow mb-1.5">Historial anterior</div>
+                <div className="space-y-2">
+                  {olderWallets.map((w) => (
+                    <button key={w.id} className="cv-btn-ghost w-full cv-icon-btn justify-center" onClick={() => loadMoreForWallet(w)} disabled={loadingMoreId === w.id}>
+                      {loadingMoreId === w.id ? "Cargando…" : `Cargar más de ${w.label}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="cv-eyebrow mb-1.5">Conexión</div>
+              <button className="cv-btn-ghost w-full cv-icon-btn justify-center" onClick={runDiagnostics} disabled={diagRunning}>{diagRunning ? "Probando…" : "Diagnosticar conexión a las APIs"}</button>
+              {diag && (
+                <div className="mt-2.5">
+                  {diag.map((d) => (
+                    <div key={d.name} className="flex gap-2.5 text-xs py-1.5 items-start border-t" style={{ borderColor: "var(--line)" }}>
+                      <span className="flex-shrink-0" style={{ color: d.ok ? "var(--pos)" : "var(--neg)", width: 14 }}>{d.ok ? "✓" : "✕"}</span>
+                      <span className="min-w-0"><span className="block" style={{ color: "var(--ink)" }}>{d.name}</span><span className="block font-mono break-words" style={{ color: "var(--dim)" }}>{d.detail}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="text-[12px] mb-4" style={{ color: "var(--dim)" }}>
-              Incluye los {filteredMovements.length} movimientos que estás viendo ahora, con los filtros aplicados.
-            </div>
-            <div className="space-y-2">
-              <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { generateStatement("pdf"); setShowExportSheet(false); }} disabled={statementGenerating !== null}>
-                <Download size={15} /> Estado de cuenta (PDF)
-              </button>
-              <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { generateStatement("excel"); setShowExportSheet(false); }} disabled={statementGenerating !== null}>
-                <Download size={15} /> Estado de cuenta (Excel)
-              </button>
-              <button className="cv-btn-ghost w-full justify-center cv-icon-btn" onClick={() => { exportFiltered(); setShowExportSheet(false); }}>
-                <Download size={15} /> Movimientos (CSV)
-              </button>
+            <div>
+              <div className="cv-eyebrow mb-1.5">Cómo se leen los movimientos</div>
+              <div className="text-[12px]" style={{ color: "var(--dim)" }}>BTC: se toma la dirección de destino de mayor valor como contraparte (puede haber más de una salida por transacción). ETH: origen/destino directo, incluye tokens ERC-20. TRON: por ahora solo movimientos TRC-20 (USDT/USDC).</div>
             </div>
           </div>
-        </>
+        </Sheet>
+      )}
+
+      {selectedAliado && (
+        <Sheet title={selectedAliado.name} onClose={() => setSelectedAliadoId(null)} wide>
+          <div className="grid grid-cols-2 gap-2.5 mb-4">
+            <div className="rounded-xl p-3.5" style={{ background: "var(--panel2)" }}>
+              <div className="text-[10.5px] uppercase tracking-wide mb-1" style={{ color: "var(--faint)" }}>Le has pagado</div>
+              <div className="font-mono text-[17px] font-bold truncate" style={{ color: "var(--neg)" }}>{fmtUSD(selectedAliadoTotals.outUsd)}</div>
+              <div className="text-[11px] font-mono mt-1" style={{ color: "var(--dim)" }}>{assetsLine(selectedAliadoTotals.outAssets) || "—"}</div>
+            </div>
+            <div className="rounded-xl p-3.5" style={{ background: "var(--panel2)" }}>
+              <div className="text-[10.5px] uppercase tracking-wide mb-1" style={{ color: "var(--faint)" }}>Te ha transferido</div>
+              <div className="font-mono text-[17px] font-bold truncate" style={{ color: "var(--pos)" }}>{fmtUSD(selectedAliadoTotals.inUsd)}</div>
+              <div className="text-[11px] font-mono mt-1" style={{ color: "var(--dim)" }}>{assetsLine(selectedAliadoTotals.inAssets) || "—"}</div>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <div className="cv-eyebrow mb-1">Direcciones conocidas</div>
+            <div className="text-[11.5px] mb-2" style={{ color: "var(--dim)" }}>Si este aliado opera desde varias wallets, añádelas todas: cualquier movimiento con ellas se etiqueta solo.</div>
+            {selectedAliado.addresses.length === 0 ? (
+              <div className="text-[12px] mb-2" style={{ color: "var(--faint)" }}>Aún no hay direcciones registradas.</div>
+            ) : (
+              selectedAliado.addresses.map((ad) => (
+                <div key={ad.address} className="flex items-center justify-between gap-2 py-1 text-[12px] border-t" style={{ borderColor: "var(--line)" }}>
+                  <span className="flex items-center gap-2 min-w-0"><ChainBadge chain={ad.chain} size={18} /><span className="font-mono truncate">{shortAddr(ad.address)}</span></span>
+                  <button className="cv-x" onClick={() => removeAddressFromAliado(selectedAliado.id, ad.address)} title="Quitar dirección" aria-label="Quitar dirección">✕</button>
+                </div>
+              ))
+            )}
+            <div className="flex flex-col sm:flex-row gap-2 mt-2">
+              <select className="cv-select w-full sm:w-auto" value={detailChain} onChange={(e) => setDetailChain(e.target.value as Chain)} aria-label="Red">
+                {(Object.keys(CHAIN_LABEL) as Chain[]).map((c) => <option key={c} value={c}>{CHAIN_LABEL[c]}</option>)}
+              </select>
+              <input className="cv-input w-full sm:flex-1 min-w-0" placeholder="Dirección" value={detailAddr} onChange={(e) => setDetailAddr(e.target.value)} />
+              <button className="cv-btn-ghost cv-icon-btn justify-center flex-shrink-0" onClick={() => { addAddressToAliado(selectedAliado.id, detailChain, detailAddr); setDetailAddr(""); }}><Plus size={13} /> Añadir</button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="cv-eyebrow">Movimientos · {selectedAliadoMovements.length}</div>
+            {selectedAliadoMovements.length > 0 && <button className="cv-btn-ghost cv-icon-btn" onClick={() => exportAliado(selectedAliado.name, selectedAliadoMovements)}><Download size={13} /> CSV</button>}
+          </div>
+          {selectedAliadoMovements.length === 0 ? (
+            <div className="text-[12px]" style={{ color: "var(--faint)" }}>Sin movimientos todavía.</div>
+          ) : (
+            selectedAliadoMovements.map((m) => (
+              <div key={rowId(m)} className="py-2.5 border-t" style={{ borderColor: "var(--line)" }}>
+                <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                  <span className="text-[11.5px] truncate" style={{ color: "var(--dim)" }}>{fmtDate(m.date)} · {m.walletLabel} · <a className="font-mono" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a></span>
+                  <span className="font-mono text-[13px] font-semibold flex-shrink-0" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>{m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}{!m.verified && " ⚠"}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-1.5">
+                  <ConceptoInput className="cv-input w-full sm:flex-1 min-w-0 sm:py-1.5" placeholder="ej. compra insumos" value={effectiveConcepto(m)} onSave={(concepto) => saveClassification(m.key, { concepto })} />
+                  <select className="cv-select w-full sm:w-[170px]" value={effectiveAliadoId(m) || ""} onChange={(e) => handleAliadoSelect(m, e.target.value)} aria-label="Aliado">{aliadoOptions}</select>
+                </div>
+              </div>
+            ))
+          )}
+
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: "var(--line)" }}>
+            <button className="cv-btn-ghost cv-icon-btn" style={{ color: "var(--neg)" }} onClick={() => deleteAliado(selectedAliado.id)}><Trash2 size={13} /> Eliminar aliado</button>
+          </div>
+        </Sheet>
       )}
 
       {detailMovement && (

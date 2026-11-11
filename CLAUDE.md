@@ -56,12 +56,13 @@ Comandos: `npm run dev -- -p 3010` · `npx tsc --noEmit` (antes: `rm -rf .next` 
 `GMAIL_SMTP_USER`/`GMAIL_SMTP_APP_PASSWORD`, `WEEKLY_REPORT_TO` (opcional). Las `NEXT_PUBLIC_*` se fijan al compilar.
 
 ## Estado actual y pendientes
-- **En curso: rediseño visual completo.** El usuario quiere un rediseño REAL (estructura y presentación), no solo pulido:
-  ya se hicieron animaciones, login nuevo y detalles en Portafolio (commits af51c53, 58e5b3b), pero las pantallas siguen
-  con la misma estructura. Propuesta a medias para Portafolio: portada con total + gráfica juntos, 4 indicadores
-  (wallets, % stablecoins, mayor concentración, estado de lectura), wallets como tarjetas en cuadrícula, Asignación +
-  Tenencias lado a lado. Después: Movimientos, Auditoría, Usuarios, barra lateral. Se quiere usar el plugin **Superdesign**
-  (`/superdesign:superdesign`) para explorar opciones de diseño.
+- **En curso: rediseño visual completo** (estructura y presentación, no solo pulido). Hecho, sin commitear al 2026-11-11:
+  **Portafolio «Portada»** (total + gráfica en una tarjeta, 4 indicadores, wallets en carrusel/cuadrícula con detalle en
+  hoja, barra de asignación + tenencias) y **Movimientos «Bandeja»** (vistas internas Actividad / Por clasificar / Aliados /
+  Resumen; lista agrupada por día; filtros, exportar, herramientas y detalle de aliado en hojas). Falta: Auditoría,
+  Usuarios y barra lateral. Las hojas usan `Sheet` de `shared.tsx` (portal a `<body>`; hoja inferior en móvil, diálogo
+  centrado en escritorio). Superdesign (`.superdesign/`, proyecto y borradores en `resume.json`) se quedó sin créditos:
+  las propuestas de Movimientos se eligieron en el chat.
 - Pendiente del usuario: cargar `GMAIL_SMTP_USER` y `GMAIL_SMTP_APP_PASSWORD` en Vercel (el reporte semanal falló 4 viernes
   por esto y el mensual probablemente también) + Redeploy. La tarjeta Usuarios → "Estado del sistema" lo confirma.
 - Pendiente del usuario: ejecutar `docs/vigilancia-supabase.sql` en Supabase para avisos de movimientos cada 5 min reales.

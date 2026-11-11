@@ -1,0 +1,514 @@
+# Theme — Cold Vault Tracker
+
+## Part 1 — Compact token summary
+Theme switch: `[data-theme="light"]` on `<html>`; default (`:root`) is DARK. Always use the CSS variables.
+
+| Token | Dark (`:root`) | Light | Use |
+|---|---|---|---|
+| `--bg` | #071a20 | #f2f5f6 | page background |
+| `--panel` | #0c242c | #ffffff | cards, top bar, sidebar |
+| `--panel2` | #102e38 | #f6f9fa | inset surfaces, inputs, chips |
+| `--line` | #17414d | #dce5e8 | borders |
+| `--line2` | #1e5060 | #c9d8dd | stronger borders |
+| `--ink` | #eaf2f4 | #0e2830 | primary text |
+| `--dim` | #8fa9b1 | #6b8087 | secondary text |
+| `--faint` | #5f7f89 | #9badb3 | tertiary text / labels |
+| `--accent` | #f77b1c | #e06a0c | brand orange: primary buttons, active nav, chart line |
+| `--amber` | #f8b345 | #c98a18 | secondary brand, gradients with accent |
+| `--pos` | #3ed598 | #00794a | positive / inflow |
+| `--neg` | #ff6b5a | #c0392b | negative / errors |
+| `--tint` | rgba(247,123,28,.13) | #fdf0e4 | accent-tinted background (active nav) |
+| `--glow` | 0 8px 30px rgba(247,123,28,.28) | 0 8px 24px rgba(247,123,28,.22) | button hover shadow |
+
+Brand (CAD Venezuela): petroleum blue #012D37, orange #F77B1C, amber #F8B345, green #008747. Chart/category palette (`CHAIN_COLORS`): #F77B1C #008747 #2E6B8C #82C35A #F8B345 #B23A3A #E6E150. Chain badges: BTC #F8B345, ETH #2E6B8C, TRON #008747.
+
+Fonts: **Sora** (400-800) for all text and headings (`--font-sans`, `--font-display`); **IBM Plex Mono** (400-600) for every figure, amount, address (`--font-mono`).
+Type scale (px): eyebrow 10.5-11 uppercase tracked; body 12-13.5; card title 14 semibold; hero total 32 mobile / 40 desktop mono bold.
+Radius: cards 14px; inputs/selects 10px; buttons and chips pill (9999px); inset blocks 12px (rounded-xl); nav items 16px.
+Shadows: card `0 1px 2px rgba(0,0,0,.16)`; modal `0 20px 60px rgba(0,0,0,.5)`.
+Spacing: card padding 16 mobile / 20-24 desktop; grid gap 16; page padding 12 mobile / 24 desktop.
+Breakpoints (Tailwind default): sm 640, md 768 (sidebar appears, bottom tab bar hides), lg 1024.
+Motion: `cv-tab-in` 0.32s fade/slide, `cv-stagger` children delay 70ms, `cv-skeleton` shimmer, `cv-live` pulse dot; all disabled under `prefers-reduced-motion`.
+
+## Part 2 — Raw sources
+
+### `tailwind.config.ts`
+
+```ts
+import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
+  theme: {
+    extend: {
+      colors: {
+        // Paleta institucional CAD Venezuela (Manual de Marca v1.0)
+        navy: "#012D37",
+        green: "#008747",
+        orange: "#F77B1C",
+        amber: "#F8B345",
+        greenLight: "#82C35A",
+        yellowGreen: "#E6E150",
+        info: "#2E6B8C",
+        danger: "#B23A3A",
+        ink: "#333333",
+        dim: "#666666",
+        line: "#E5E7E8",
+        surface: "#F4F4F4",
+        paper: "#FFFFFF",
+      },
+      fontFamily: {
+        display: ["var(--font-display)"],
+        mono: ["var(--font-mono)"],
+        sans: ["var(--font-sans)"],
+      },
+    },
+  },
+  plugins: [],
+};
+export default config;
+
+```
+
+### `src/app/globals.css`
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #071a20;
+  --panel: #0c242c;
+  --panel2: #102e38;
+  --line: #17414d;
+  --line2: #1e5060;
+  --ink: #eaf2f4;
+  --dim: #8fa9b1;
+  --faint: #5f7f89;
+  --accent: #f77b1c;
+  --amber: #f8b345;
+  --pos: #3ed598;
+  --neg: #ff6b5a;
+  --tint: rgba(247, 123, 28, 0.13);
+  --glow: 0 8px 30px rgba(247, 123, 28, 0.28);
+
+  --font-display: var(--font-sora), system-ui, sans-serif;
+  --font-impact: var(--font-sora), system-ui, sans-serif;
+  --font-sans: var(--font-sora), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), monospace;
+}
+
+[data-theme="light"] {
+  --bg: #f2f5f6;
+  --panel: #ffffff;
+  --panel2: #f6f9fa;
+  --line: #dce5e8;
+  --line2: #c9d8dd;
+  --ink: #0e2830;
+  --dim: #6b8087;
+  --faint: #9badb3;
+  --accent: #e06a0c;
+  --amber: #c98a18;
+  --pos: #00794a;
+  --neg: #c0392b;
+  --tint: #fdf0e4;
+  --glow: 0 8px 24px rgba(247, 123, 28, 0.22);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+::placeholder {
+  color: var(--faint);
+}
+
+.cv-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 9px 18px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease;
+  font-family: var(--font-display);
+}
+.cv-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--glow);
+}
+.cv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+.cv-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  padding: 8px 15px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.cv-btn-ghost:hover {
+  background: var(--panel2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cv-input {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-mono);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--tint);
+}
+.cv-select {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.cv-select:focus {
+  border-color: var(--accent);
+}
+.cv-row:hover {
+  background: var(--panel2);
+}
+.cv-x {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 15px;
+}
+.cv-x:hover {
+  color: var(--neg);
+}
+
+/* --- sistema visual: tarjetas con franja lateral (patrón tomado del manual de marca CAD) --- */
+.cv-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.cv-card-hover:hover {
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+.cv-stripe {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+.cv-eyebrow {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.cv-chain-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@keyframes cv-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cv-fade-in {
+  animation: cv-fade-in 0.25s ease both;
+}
+
+/* ============ SIDEBAR (escritorio) ============ */
+.cv-sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+.cv-nav-item {
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.cv-nav-item:hover {
+  background: var(--panel2);
+  transform: translateX(3px);
+}
+
+/* ============ MÓVIL ============ */
+
+/* Respeta las zonas seguras del iPhone (notch, barra inferior) */
+.cv-safe-bottom { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+.cv-safe-top { padding-top: env(safe-area-inset-top); }
+
+/* Barra de navegación inferior tipo app nativa */
+.cv-tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 50;
+  display: flex;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.2);
+}
+.cv-tabbar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  min-height: 54px;
+  transition: color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.cv-tabbar-item[data-active="true"] { color: var(--accent); }
+
+/* Hoja modal deslizable desde abajo (para filtros y acciones en móvil) */
+.cv-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  animation: cv-fade-in 0.18s ease both;
+}
+.cv-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 61;
+  background: var(--panel);
+  border-radius: 20px 20px 0 0;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4);
+  animation: cv-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes cv-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.cv-sheet-handle {
+  width: 38px; height: 4px; border-radius: 999px;
+  background: var(--line2); margin: 6px auto 14px;
+}
+
+@media (max-width: 767px) {
+  /* Evita el zoom automático de iOS al enfocar un campo (requiere >=16px) */
+  .cv-input, .cv-select, input, select, textarea {
+    font-size: 16px !important;
+  }
+  /* Área táctil cómoda */
+  .cv-input, .cv-select {
+    padding: 11px 13px;
+    min-height: 44px;
+  }
+  .cv-btn, .cv-btn-ghost {
+    min-height: 44px;
+    padding: 11px 18px;
+  }
+  .cv-x {
+    min-width: 40px; min-height: 40px;
+    font-size: 18px;
+  }
+  /* Las tarjetas ocupan mejor el ancho disponible */
+  .cv-card { border-radius: 14px; }
+  /* Desactiva el hover-lift en táctil (no aplica y causa saltos) */
+  .cv-card-hover:hover { transform: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16); }
+}
+
+/* Scroll horizontal con inercia para tablas que no se pueden apilar */
+.cv-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* --- asistente: ventana de chat tipo soporte --- */
+@keyframes cv-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.cv-pop { animation: cv-pop 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; transform-origin: bottom right; }
+@keyframes cv-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.cv-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--dim); animation: cv-bounce 1.1s infinite ease-in-out; }
+.cv-chat-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+  border-radius: 9999px; background: rgba(255, 255, 255, 0.16); color: #fff; border: none; cursor: pointer;
+}
+.cv-chat-btn:hover { background: rgba(255, 255, 255, 0.28); }
+@media (prefers-reduced-motion: reduce) { .cv-pop, .cv-dot { animation: none; } }
+
+/* ============ MOVIMIENTO Y PROFUNDIDAD ============ */
+
+/* Resplandor ambiental fijo detrás de todo: da profundidad sin competir con el contenido. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 92% -8%, rgba(247, 123, 28, 0.10), transparent 60%),
+    radial-gradient(700px 480px at -6% 108%, rgba(30, 130, 150, 0.10), transparent 60%);
+}
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(900px 500px at 92% -8%, rgba(247, 123, 28, 0.08), transparent 60%),
+    radial-gradient(700px 480px at -6% 108%, rgba(30, 130, 150, 0.06), transparent 60%);
+}
+
+/* Cambio de pestaña: el contenido entra con un fundido corto. */
+@keyframes cv-tab-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.cv-tab-in { animation: cv-tab-in 0.32s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* Entrada escalonada: los hijos directos aparecen uno tras otro. */
+.cv-stagger > * { animation: cv-tab-in 0.42s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.cv-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.cv-stagger > *:nth-child(2) { animation-delay: 70ms; }
+.cv-stagger > *:nth-child(3) { animation-delay: 140ms; }
+.cv-stagger > *:nth-child(4) { animation-delay: 210ms; }
+.cv-stagger > *:nth-child(5) { animation-delay: 280ms; }
+.cv-stagger > *:nth-child(6) { animation-delay: 350ms; }
+.cv-stagger > *:nth-child(n + 7) { animation-delay: 420ms; }
+
+/* Carga: esqueleto con brillo que recorre, en vez de "…" o "Cargando…". */
+@keyframes cv-shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}
+.cv-skeleton {
+  display: inline-block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--panel2) 0px, var(--line) 80px, var(--panel2) 160px);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  background-color: var(--panel2);
+  animation: cv-shimmer 1.3s ease-in-out infinite;
+}
+
+/* Pulso suave para indicadores "en vivo". */
+@keyframes cv-live {
+  0% { box-shadow: 0 0 0 0 rgba(62, 213, 152, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(62, 213, 152, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(62, 213, 152, 0); }
+}
+.cv-live { animation: cv-live 2s ease-out infinite; }
+
+/* Botones: respuesta táctil al presionar. */
+.cv-btn:active:not(:disabled), .cv-btn-ghost:active:not(:disabled) { transform: scale(0.97); }
+
+/* Navegación lateral: barra de acento en el ítem activo. */
+.cv-nav-item { position: relative; }
+.cv-nav-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  animation: cv-tab-in 0.25s ease both;
+}
+
+/* Variación (sube/baja) con color y una flecha que "respira". */
+.cv-delta { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 3px 9px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
+.cv-delta[data-dir="up"] { background: rgba(62, 213, 152, 0.14); color: var(--pos); }
+.cv-delta[data-dir="down"] { background: rgba(255, 107, 90, 0.14); color: var(--neg); }
+.cv-delta[data-dir="flat"] { background: var(--panel2); color: var(--dim); }
+
+/* ============ PANTALLAS DE ENTRADA (login / registro) ============ */
+.cv-auth { position: relative; overflow: hidden; }
+.cv-auth-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  opacity: 0.35;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 72%);
+}
+.cv-orb { position: absolute; border-radius: 9999px; filter: blur(70px); pointer-events: none; opacity: 0.5; }
+.cv-orb-1 { width: 380px; height: 380px; background: var(--accent); top: -120px; right: -60px; animation: cv-float 14s ease-in-out infinite; }
+.cv-orb-2 { width: 320px; height: 320px; background: #1e8296; bottom: -110px; left: -70px; animation: cv-float 17s ease-in-out infinite reverse; }
+.cv-orb-3 { width: 220px; height: 220px; background: var(--amber); bottom: 18%; right: 14%; opacity: 0.22; animation: cv-float 20s ease-in-out infinite; }
+@keyframes cv-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(26px, -22px) scale(1.06); }
+  66% { transform: translate(-18px, 18px) scale(0.96); }
+}
+@keyframes cv-ring {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.cv-logo-ring { position: absolute; inset: 0; border-radius: 1rem; border: 2px solid var(--accent); animation: cv-ring 2.6s ease-out infinite; }
+@keyframes cv-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.cv-bob { animation: cv-bob 4s ease-in-out infinite; }
+.cv-auth-card { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@keyframes cv-text-shine {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+.cv-shine {
+  background: linear-gradient(100deg, var(--accent) 20%, var(--amber) 45%, var(--accent) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: cv-text-shine 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-tab-in, .cv-stagger > *, .cv-skeleton, .cv-live, .cv-orb, .cv-logo-ring, .cv-bob, .cv-shine, .cv-nav-item[data-active="true"]::before { animation: none !important; }
+  .cv-shine { -webkit-text-fill-color: var(--accent); background: none; }
+}
+
+```

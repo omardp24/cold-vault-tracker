@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { FIXED_STABLECOINS, SYMBOL_COINGECKO, SYMBOL_LOGO } from "@/lib/assets";
 import { fmtAmt, fmtDate, fmtDateTime, fmtUSD, shortAddr } from "@/lib/format";
 export { FIXED_STABLECOINS, SYMBOL_COINGECKO, fmtAmt, fmtDate, fmtDateTime, fmtUSD, shortAddr };
@@ -177,5 +178,32 @@ export function ConfirmModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Hoja modal: en teléfono sube desde abajo (.cv-sheet); en escritorio es un diálogo centrado
+ * (.cv-sheet-modal en globals.css). Se cierra con Escape o tocando el fondo. Se monta en <body> con un
+ * portal: dentro del contenedor animado de la pestaña quedaría atrapada debajo de las barras fijas.
+ */
+export function Sheet({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(
+    <>
+      <div className="cv-sheet-backdrop" onClick={onClose} />
+      <div className={`cv-sheet cv-sheet-modal ${wide ? "cv-sheet-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="cv-sheet-handle md:hidden" />
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="font-display text-[15px] font-semibold min-w-0 truncate" style={{ color: "var(--ink)" }}>{title}</div>
+          <button className="cv-x flex-shrink-0" onClick={onClose} title="Cerrar" aria-label="Cerrar">✕</button>
+        </div>
+        {children}
+      </div>
+    </>,
+    document.body,
   );
 }

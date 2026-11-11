@@ -31,7 +31,7 @@ export default function EvolutionChart({ history, loading }: { history: Portfoli
               <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--faint)" }} axisLine={false} tickLine={false} minTickGap={24} />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--faint)" }} axisLine={false} tickLine={false} minTickGap={24} padding={{ left: 16, right: 16 }} tickFormatter={(d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d)} />
           <Tooltip
             formatter={(v: any) => [fmtUSD(v as number), "Total"]}
             contentStyle={{ background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 12, color: "var(--ink)" }}
