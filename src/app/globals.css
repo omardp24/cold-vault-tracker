@@ -491,3 +491,13 @@ body::before {
 .cv-tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 2px 8px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 /* Lista de un día en Movimientos: la primera fila no lleva línea superior */
 .cv-daylist > :first-child { border-top: none; }
+
+/* Barra lateral en modo riel (md–lg): la barra de acento del ítem activo se ajusta al relleno menor */
+@media (max-width: 1023px) { .cv-nav-item[data-active="true"]::before { left: -12px; } }
+/* En modo riel el desplazamiento al pasar el cursor no aporta nada */
+@media (max-width: 1023px) { .cv-nav-item:hover { transform: none; } }
+
+/* Barra inferior: píldora tras el icono activo y contador de pendientes */
+.cv-tabbar-ico { position: relative; display: flex; align-items: center; justify-content: center; padding: 3px 16px; border-radius: 9999px; transition: background 0.18s ease; }
+.cv-tabbar-item[data-active="true"] .cv-tabbar-ico { background: var(--tint); }
+.cv-tabbar-badge { position: absolute; top: -4px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9999px; background: var(--accent); color: #fff; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; line-height: 16px; text-align: center; border: 2px solid var(--panel); box-sizing: content-box; }

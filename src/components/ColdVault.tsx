@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, LogOut, Moon, ShieldCheck, Sun, Users, Wallet as WalletIcon } from "lucide-react";
+import { ArrowLeftRight, LogOut, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet as WalletIcon } from "lucide-react";
 import {
   Aliado, Chain, Classification, Holding, ManualHolding, Movement, Wallet,
   CHAIN_COLORS, CHAIN_LABEL, FIXED_STABLECOINS, SYMBOL_COINGECKO,
@@ -913,19 +913,24 @@ export default function ColdVault() {
     { id: "audit", label: "Auditoría", Icon: ShieldCheck },
     ...(currentUser?.role === "owner" ? [{ id: "users" as const, label: "Usuarios", Icon: Users }] : []),
   ];
+  // En pantallas medianas (md–lg) la barra lateral es un riel de iconos; desde lg muestra también los textos.
   const SidebarNavBtn = ({ id, label, Icon, badge }: { id: TabId; label: string; Icon: any; badge?: number }) => {
     const active = tab === id;
     return (
       <button
         onClick={() => setTab(id)}
         data-active={active}
-        className="cv-nav-item flex items-center gap-2.5 w-full text-left rounded-2xl px-3.5 py-2.5 text-[13.5px]"
-        style={{ background: active ? "var(--tint)" : "transparent", color: active ? "var(--accent)" : "var(--dim)", fontWeight: active ? 600 : 500, border: "none", cursor: "pointer" }}
+        title={label}
+        className="cv-nav-item flex items-center justify-center lg:justify-start gap-3 w-full text-left rounded-2xl lg:px-3.5 py-2.5 text-[13.5px]"
+        style={{ background: active ? "var(--tint)" : "transparent", color: active ? "var(--accent)" : "var(--dim)", fontWeight: active ? 600 : 500, border: "none", cursor: "pointer", minHeight: 44 }}
       >
-        <Icon size={18} strokeWidth={2} />
-        <span className="flex-1">{label}</span>
+        <span className="relative flex-shrink-0 flex">
+          <Icon size={19} strokeWidth={active ? 2.3 : 2} />
+          {!!badge && <span className="lg:hidden absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full" style={{ background: "var(--accent)", border: "2px solid var(--panel)" }} />}
+        </span>
+        <span className="hidden lg:block flex-1 truncate">{label}</span>
         {!!badge && (
-          <span className="text-[10.5px] font-bold rounded-full px-2 py-0.5" style={{ background: "var(--accent)", color: "#fff" }}>{badge}</span>
+          <span className="hidden lg:block font-mono text-[10.5px] font-bold rounded-full px-2 py-0.5" style={{ background: "var(--accent)", color: "#fff" }}>{badge}</span>
         )}
       </button>
     );
@@ -945,11 +950,8 @@ export default function ColdVault() {
     <>
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
       {/* Sidebar — solo escritorio */}
-      <aside
-        className="cv-sidebar hidden md:flex flex-col gap-1.5 flex-shrink-0 sticky top-0 h-screen overflow-y-auto"
-        style={{ width: 232, padding: "22px 16px" }}
-      >
-        <div className="flex items-center gap-2.5 px-2 pb-6">
+      <aside className="cv-sidebar hidden md:flex flex-col flex-shrink-0 sticky top-0 h-screen overflow-y-auto w-[76px] lg:w-[244px] px-3 lg:px-4 py-5">
+        <div className="flex items-center justify-center lg:justify-start gap-2.5 lg:px-1.5 pb-5">
           <div
             className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(140deg, var(--accent), var(--amber))", boxShadow: "var(--glow)" }}
@@ -960,32 +962,76 @@ export default function ColdVault() {
               <path d="M12 13.2V15.6" />
             </svg>
           </div>
-          <div className="min-w-0">
+          <div className="hidden lg:block min-w-0">
             <div className="text-[15.5px] font-bold tracking-tight" style={{ color: "var(--ink)" }}>Cold Vault</div>
-            <div className="text-[11px]" style={{ color: "var(--faint)" }}>Portafolio en vivo</div>
+            <div className="text-[11px]" style={{ color: "var(--faint)" }}>CAD Venezuela</div>
           </div>
         </div>
 
-        {NAV_ITEMS.map((item) => <SidebarNavBtn key={item.id} {...item} />)}
-
-        <div className="mt-auto rounded-2xl p-3.5 text-[11px]" style={{ background: "var(--panel2)" }}>
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${(gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "" : "cv-live"}`} style={{ background: (gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "var(--amber)" : "var(--pos)" }} />
-            <span className="uppercase tracking-wide font-semibold text-[10px]" style={{ color: "var(--dim)" }}>Red ahora</span>
+        {/* Total siempre a la vista, en cualquier pestaña */}
+        <button
+          onClick={() => setTab("portfolio")}
+          className="hidden lg:block text-left rounded-2xl px-3.5 py-3 mb-4"
+          style={{ background: "var(--panel2)", border: "1px solid var(--line)", cursor: "pointer", color: "var(--ink)" }}
+          title="Ir a Portafolio"
+        >
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--faint)" }}>
+            <span className={`w-1.5 h-1.5 rounded-full ${incompleteWallets.length === 0 && !refreshing ? "cv-live" : ""}`} style={{ background: incompleteWallets.length > 0 ? "var(--neg)" : refreshing ? "var(--amber)" : "var(--pos)" }} />
+            Portafolio total
           </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
-              <span>BTC{gasNow.btc?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
-              <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.btc?.levels ? `${gasNow.btc.levels[1]?.detail?.split(" ")[0] || "—"} sat/vB` : "—"}</span>
+          <div className="font-mono text-[17px] font-bold mt-1 truncate">{fmtUSD(total)}</div>
+          <div className="text-[10.5px] mt-0.5 truncate" style={{ color: "var(--faint)" }}>
+            {incompleteWallets.length > 0 ? "Total incompleto" : lastUpdated ? `Leído ${lastUpdated.toLocaleTimeString("es-VE", { hour: "numeric", minute: "2-digit" })}` : "Leyendo…"}
+          </div>
+        </button>
+
+        <div className="hidden lg:block text-[10px] font-semibold uppercase tracking-wider px-3.5 mb-1.5" style={{ color: "var(--faint)" }}>Secciones</div>
+        <nav className="flex flex-col gap-1">
+          {NAV_ITEMS.map((item) => <SidebarNavBtn key={item.id} {...item} />)}
+        </nav>
+
+        <div className="mt-auto pt-4">
+          <div className="hidden lg:block rounded-2xl p-3.5 text-[11px] mb-3" style={{ background: "var(--panel2)" }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${(gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "" : "cv-live"}`} style={{ background: (gasNow.btc?.stale || gasNow.eth?.stale || gasNow.tron?.stale) ? "var(--amber)" : "var(--pos)" }} />
+              <span className="uppercase tracking-wider font-semibold text-[10px]" style={{ color: "var(--faint)" }}>Comisiones de red</span>
             </div>
-            <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
-              <span>ETH{gasNow.eth?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
-              <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.eth?.levels ? `${gasNow.eth.levels[0]?.detail?.split(" ")[0] || "—"} gwei` : "—"}</span>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
+                <span>BTC{gasNow.btc?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
+                <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.btc?.levels ? `${gasNow.btc.levels[1]?.detail?.split(" ")[0] || "—"} sat/vB` : "—"}</span>
+              </div>
+              <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
+                <span>ETH{gasNow.eth?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
+                <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.eth?.levels ? `${gasNow.eth.levels[0]?.detail?.split(" ")[0] || "—"} gwei` : "—"}</span>
+              </div>
+              <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
+                <span>TRON{gasNow.tron?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
+                <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.tron?.levels ? `${fmtAmt(gasNow.tron.levels[1]?.fee, 2)} TRX` : "—"}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between" style={{ color: "var(--dim)" }}>
-              <span>TRON{gasNow.tron?.stale && <span title="Desactualizado — la API está caída" style={{ color: "var(--amber)" }}> ⚠</span>}</span>
-              <span className="font-mono" style={{ color: "var(--ink)" }}>{gasNow.tron?.levels ? `${fmtAmt(gasNow.tron.levels[1]?.fee, 2)} TRX` : "—"}</span>
-            </div>
+          </div>
+
+          {/* Cuenta: quién está dentro, tema y salir */}
+          <div className="flex flex-col lg:flex-row items-center gap-2 pt-3 border-t" style={{ borderColor: "var(--line)" }}>
+            {currentUser && (
+              <div className="flex items-center gap-2.5 min-w-0 lg:flex-1" title={`${currentUser.name} · ${currentUser.role === "owner" ? "propietario" : "miembro"}`}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-[12.5px] font-bold flex-shrink-0" style={{ background: "var(--tint)", color: "var(--accent)" }}>
+                  {currentUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="hidden lg:block leading-tight min-w-0">
+                  <div className="text-[12.5px] font-semibold truncate" style={{ color: "var(--ink)" }}>{currentUser.name}</div>
+                  <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--faint)" }}>{currentUser.role === "owner" ? "propietario" : "miembro"}</div>
+                </div>
+              </div>
+            )}
+            <ThemeToggleBtn />
+            <button
+              className="cv-icon-btn justify-center rounded-full flex-shrink-0" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión"
+              style={{ width: 34, height: 34, background: "transparent", border: "1px solid var(--line)", color: "var(--dim)", cursor: "pointer" }}
+            >
+              <LogOut size={15} />
+            </button>
           </div>
         </div>
       </aside>
@@ -1005,23 +1051,8 @@ export default function ColdVault() {
           />
           <div className="ml-auto flex items-center gap-2.5 flex-shrink-0">
             <PushBell />
-            <ThemeToggleBtn />
-            <button className="cv-btn" onClick={fetchAll} disabled={refreshing}>
-              {refreshing ? "Actualizando…" : "Actualizar"}
-            </button>
-            {currentUser && (
-              <div className="flex items-center gap-2.5 pl-2.5 pr-3.5 py-1.5 rounded-full" style={{ background: "var(--panel2)" }}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0" style={{ background: "var(--tint)", color: "var(--accent)" }}>
-                  {currentUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="leading-tight">
-                  <div className="text-[12px] font-medium" style={{ color: "var(--ink)" }}>{currentUser.name}</div>
-                  <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--faint)" }}>{currentUser.role === "owner" ? "propietario" : "miembro"}</div>
-                </div>
-              </div>
-            )}
-            <button className="cv-x" onClick={logout} title="Cerrar sesión">
-              <LogOut size={16} />
+            <button className="cv-btn inline-flex items-center gap-1.5" onClick={fetchAll} disabled={refreshing}>
+              <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Actualizando…" : "Actualizar saldos"}
             </button>
           </div>
         </div>
@@ -1140,14 +1171,17 @@ export default function ColdVault() {
 
     {/* Barra de navegación inferior — solo móvil */}
     <nav className="cv-tabbar md:hidden">
-      {NAV_ITEMS.map(({ id, label, Icon }) => (
+      {NAV_ITEMS.map(({ id, label, Icon, badge }) => (
         <button
           key={id}
           className="cv-tabbar-item"
           data-active={tab === id}
           onClick={() => { setTab(id); window.scrollTo({ top: 0, behavior: "smooth" }); }}
         >
-          <Icon size={19} strokeWidth={tab === id ? 2.4 : 1.9} />
+          <span className="cv-tabbar-ico">
+            <Icon size={19} strokeWidth={tab === id ? 2.4 : 1.9} />
+            {!!badge && <span className="cv-tabbar-badge">{badge > 99 ? "99+" : badge}</span>}
+          </span>
           <span>{label}</span>
         </button>
       ))}

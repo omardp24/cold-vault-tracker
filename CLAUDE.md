@@ -56,13 +56,17 @@ Comandos: `npm run dev -- -p 3010` · `npx tsc --noEmit` (antes: `rm -rf .next` 
 `GMAIL_SMTP_USER`/`GMAIL_SMTP_APP_PASSWORD`, `WEEKLY_REPORT_TO` (opcional). Las `NEXT_PUBLIC_*` se fijan al compilar.
 
 ## Estado actual y pendientes
-- **En curso: rediseño visual completo** (estructura y presentación, no solo pulido). Hecho, sin commitear al 2026-11-11:
-  **Portafolio «Portada»** (total + gráfica en una tarjeta, 4 indicadores, wallets en carrusel/cuadrícula con detalle en
-  hoja, barra de asignación + tenencias) y **Movimientos «Bandeja»** (vistas internas Actividad / Por clasificar / Aliados /
-  Resumen; lista agrupada por día; filtros, exportar, herramientas y detalle de aliado en hojas). Falta: Auditoría,
-  Usuarios y barra lateral. Las hojas usan `Sheet` de `shared.tsx` (portal a `<body>`; hoja inferior en móvil, diálogo
-  centrado en escritorio). Superdesign (`.superdesign/`, proyecto y borradores en `resume.json`) se quedó sin créditos:
-  las propuestas de Movimientos se eligieron en el chat.
+- **Rediseño visual completo (estructura y presentación): las cinco piezas están hechas al 2026-11-11**, en la rama
+  `rediseno-portafolio-movimientos` (sin subir ni fusionar a `main`; dos commits: Portafolio y Movimientos, y luego
+  Auditoría, Usuarios y barra lateral): **Portafolio «Portada»** (total + gráfica en una tarjeta, 4 indicadores, wallets en
+  carrusel/cuadrícula con detalle en hoja, barra de asignación + tenencias); **Movimientos «Bandeja»** (vistas internas
+  Actividad / Por clasificar / Aliados / Resumen, lista por día); **Auditoría «Informe»** (red autodetectada, veredicto +
+  lista de comprobaciones, recientes en localStorage `cv-audit-recent`); **Usuarios** (vistas Equipo / Sistema /
+  Actividad); **barra lateral** (riel de iconos en md–lg, completa desde lg, con el total, las comisiones de red y la
+  cuenta —tema y salir— abajo; la barra superior de escritorio solo tiene búsqueda, campana y «Actualizar saldos»; la
+  barra inferior móvil muestra el contador de pendientes). Las hojas usan `Sheet` de `shared.tsx` (portal a `<body>`).
+  Las pestañas internas usan `.cv-subtabs`. Superdesign (`.superdesign/`) se quedó sin créditos tras Portafolio.
+  Probado solo con datos falsos en la página temporal de vista previa, no con la cuenta real.
 - Pendiente del usuario: cargar `GMAIL_SMTP_USER` y `GMAIL_SMTP_APP_PASSWORD` en Vercel (el reporte semanal falló 4 viernes
   por esto y el mensual probablemente también) + Redeploy. La tarjeta Usuarios → "Estado del sistema" lo confirma.
 - Pendiente del usuario: ejecutar `docs/vigilancia-supabase.sql` en Supabase para avisos de movimientos cada 5 min reales.
