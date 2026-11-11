@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
 // Inter para todo el texto y las cifras; JetBrains Mono solo para direcciones, hashes y códigos (ver --font-addr).
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const jbMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-jb-mono" });
+// Las dos van como archivos en src/fonts (variables, subconjunto latino, licencia OFL) y no con next/font/google:
+// en Vercel la descarga desde Google Fonts rompía la compilación ("Cannot read properties of null (reading '1')").
+const inter = localFont({ src: "../fonts/Inter-latin.woff2", weight: "100 900", variable: "--font-inter", display: "swap" });
+const jbMono = localFont({ src: "../fonts/JetBrainsMono-latin.woff2", weight: "100 800", variable: "--font-jb-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Cold Vault",

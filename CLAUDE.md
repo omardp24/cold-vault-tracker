@@ -28,7 +28,8 @@ Comandos: `npm run dev -- -p 3010` · `npx tsc --noEmit` (antes: `rm -rf .next` 
 - `src/components/AuthShell.tsx` — carcasa de login/registro (fondo animado). Páginas: `src/app/login`, `src/app/signup`.
 - `src/app/globals.css` — TODO el sistema visual: variables de tema (`--bg --panel --panel2 --line --ink --dim --faint
   --accent --pos --neg ...`), modo claro/oscuro con `[data-theme]`, clases `.cv-*` (card, btn, input, stagger, skeleton…).
-- `src/app/layout.tsx` — fuentes Inter (texto y cifras) y JetBrains Mono (solo direcciones, hashes y códigos), metadata
+- `src/app/layout.tsx` — fuentes Inter (texto y cifras) y JetBrains Mono (solo direcciones, hashes y códigos), cargadas
+  con `next/font/local` desde `src/fonts/` (NO `next/font/google`: rompía la compilación en Vercel), metadata
   PWA de iOS. Ojo: la clase `font-mono` ahora es Inter con números tabulares; el ancho fijo real es `font-addr`.
   El PDF del estado de cuenta (`statementPdf.tsx`) sigue usando Sora, con sus propios archivos de fuente.
 - `src/app/api/**` — rutas. Protegidas con `requireAuth()` (`src/lib/auth.ts`, sesión por cookie `cvt_session`).
