@@ -26,7 +26,7 @@ function inline(text: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*)/g).map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
     if (p.length > 2 && p.startsWith("*") && p.endsWith("*")) return <em key={i}>{p.slice(1, -1)}</em>;
-    if (p.startsWith("`") && p.endsWith("`")) return <code key={i} className="font-mono text-[11.5px] px-1 rounded" style={{ background: "var(--panel)" }}>{p.slice(1, -1)}</code>;
+    if (p.startsWith("`") && p.endsWith("`")) return <code key={i} className="font-addr text-[11.5px] px-1 rounded" style={{ background: "var(--panel)" }}>{p.slice(1, -1)}</code>;
     return <Fragment key={i}>{p}</Fragment>;
   });
 }

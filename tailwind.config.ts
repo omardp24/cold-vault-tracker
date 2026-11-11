@@ -23,6 +23,7 @@ const config: Config = {
       fontFamily: {
         display: ["var(--font-display)"],
         mono: ["var(--font-mono)"],
+        addr: ["var(--font-addr)"],
         sans: ["var(--font-sans)"],
       },
     },

@@ -18,10 +18,13 @@
   --tint: rgba(247, 123, 28, 0.13);
   --glow: 0 8px 30px rgba(247, 123, 28, 0.28);
 
-  --font-display: var(--font-sora), system-ui, sans-serif;
-  --font-impact: var(--font-sora), system-ui, sans-serif;
-  --font-sans: var(--font-sora), system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), monospace;
+  --font-display: var(--font-inter), system-ui, sans-serif;
+  --font-impact: var(--font-inter), system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  /* Las cifras usan la misma Inter, con números tabulares (ver .font-mono abajo): «mono» aquí significa
+     «cifras alineadas», no ancho fijo. El ancho fijo de verdad es --font-addr (direcciones, hashes, códigos). */
+  --font-mono: var(--font-inter), system-ui, sans-serif;
+  --font-addr: var(--font-jb-mono), ui-monospace, monospace;
 }
 
 [data-theme="light"] {
@@ -40,6 +43,8 @@
   --tint: #fdf0e4;
   --glow: 0 8px 24px rgba(247, 123, 28, 0.22);
 }
+
+.font-mono, .cv-delta, .cv-subtab-count, .cv-tabbar-badge { font-variant-numeric: tabular-nums; }
 
 body {
   background: var(--bg);

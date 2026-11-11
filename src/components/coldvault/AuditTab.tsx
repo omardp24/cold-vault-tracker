@@ -154,7 +154,7 @@ export default function AuditTab() {
                 <div className="text-[12.5px] mt-0.5" style={{ color: "var(--ink)" }}>{v.note}</div>
                 <div className="flex items-center gap-2 mt-2.5 min-w-0">
                   <ChainBadge chain={r.chain as Chain} size={18} />
-                  <span className="font-mono text-[11.5px] break-all min-w-0" style={{ color: "var(--dim)" }}>{r.address}</span>
+                  <span className="font-addr text-[11.5px] break-all min-w-0" style={{ color: "var(--dim)" }}>{r.address}</span>
                   <button className="flex items-center justify-center flex-shrink-0" style={{ width: 30, height: 30, background: "none", border: "none", color: copied ? "var(--pos)" : "var(--dim)", cursor: "pointer" }} onClick={copyAddress} title="Copiar dirección" aria-label="Copiar dirección">{copied ? <Check size={14} /> : <Copy size={14} />}</button>
                 </div>
               </div>
@@ -244,7 +244,7 @@ export default function AuditTab() {
                   onClick={() => { setAuditChain(a.chain); setAuditAddr(a.address); runAudit(a.chain, a.address); }} title="Volver a auditar">
                   <ChainBadge chain={a.chain} size={22} />
                   <span className="min-w-0 flex-1 block">
-                    <span className="block font-mono text-[12.5px]">{shortAddr(a.address)}</span>
+                    <span className="block font-addr text-[12.5px]">{shortAddr(a.address)}</span>
                     <span className="block text-[11px]" style={{ color: "var(--faint)" }}>{fmtDateTime(a.at)}</span>
                   </span>
                   <span className="cv-tag flex-shrink-0" style={{ background: VERDICT[a.verdict]?.bg, color: VERDICT[a.verdict]?.color }}>{VERDICT[a.verdict]?.title}</span>

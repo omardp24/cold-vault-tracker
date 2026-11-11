@@ -111,13 +111,13 @@ export default function TransactionDetailModal({ movement: m, ctx, onClose }: { 
               : <span className="font-mono">{fmtAmt(fee.fee, 8)} {fee.symbol}</span>}
           </Row>
           <Row label="ID de transacción">
-            <span className="font-mono text-[12px] break-all" style={{ color: "var(--dim)" }}>{m.txid}</span>
+            <span className="font-addr text-[12px] break-all" style={{ color: "var(--dim)" }}>{m.txid}</span>
           </Row>
           <Row label="De">
-            <span className="font-mono text-[12px] break-all" style={{ color: "var(--dim)" }}>{from || "—"}</span>
+            <span className="font-addr text-[12px] break-all" style={{ color: "var(--dim)" }}>{from || "—"}</span>
           </Row>
           <Row label="Hacia">
-            <span className="font-mono text-[12px] break-all" style={{ color: "var(--dim)" }}>{to || "—"}</span>
+            <span className="font-addr text-[12px] break-all" style={{ color: "var(--dim)" }}>{to || "—"}</span>
           </Row>
 
           <a href={m.explorer} target="_blank" rel="noreferrer" className="cv-btn-ghost w-full justify-center mt-5 inline-flex items-center gap-1.5">

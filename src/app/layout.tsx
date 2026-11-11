@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Sora } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const sora = Sora({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-sora" });
-const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex-mono" });
+// Inter para todo el texto y las cifras; JetBrains Mono solo para direcciones, hashes y códigos (ver --font-addr).
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const jbMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-jb-mono" });
 
 export const metadata: Metadata = {
   title: "Cold Vault",
@@ -35,7 +36,7 @@ try {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${sora.variable} ${plexMono.variable}`}>
+    <html lang="es" className={`${inter.variable} ${jbMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

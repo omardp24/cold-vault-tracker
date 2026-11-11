@@ -26,7 +26,7 @@ Single authenticated app with 4 sections: Portafolio (main), Movimientos, Audito
 | --tint | rgba(247,123,28,.13) | #fdf0e4 |
 
 - Category palette for charts: #F77B1C #008747 #2E6B8C #82C35A #F8B345 #B23A3A #E6E150.
-- Fonts: **Sora** for all text/headings; **IBM Plex Mono** for every number, amount, percentage and address. No other fonts.
+- Fonts: **Inter** for all text, headings and figures (tabular numbers); **JetBrains Mono** only for addresses, hashes and codes. No other fonts.
 - Shapes: cards radius 14px with 1px `--line` border and very soft shadow; pill buttons and chips; inputs radius 10px; inset blocks radius 12px on `--panel2`.
 - Buttons: primary = solid orange pill, white text; ghost = transparent pill with 1px border, turns orange on hover.
 - Logo: rounded tile with orange→amber gradient containing a shield outline; wordmark "Cold Vault".

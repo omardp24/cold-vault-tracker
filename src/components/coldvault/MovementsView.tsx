@@ -280,7 +280,7 @@ export default function MovementsView(props: MovementsViewProps) {
               </span>
               <span className="flex items-center gap-1.5 text-[11.5px] mt-0.5 min-w-0" style={{ color: "var(--dim)" }}>
                 <ChainBadge chain={m.chain} size={14} />
-                <span className="truncate">{m.walletLabel} · <span className="font-mono">{shortAddr(m.counterparty)}</span>{m.otherCount > 0 && ` +${m.otherCount} más`}</span>
+                <span className="truncate">{m.walletLabel} · <span className="font-addr">{shortAddr(m.counterparty)}</span>{m.otherCount > 0 && ` +${m.otherCount} más`}</span>
               </span>
               {flagTags(m)}
             </span>
@@ -620,7 +620,7 @@ export default function MovementsView(props: MovementsViewProps) {
                       <div className="flex items-center gap-2.5 min-w-0">
                         <ChainBadge chain={g.chain} size={28} />
                         <div className="min-w-0">
-                          <div className="font-mono text-[13px] font-semibold" style={{ color: "var(--ink)" }}>{shortAddr(g.address)}</div>
+                          <div className="font-addr text-[13px] font-semibold" style={{ color: "var(--ink)" }}>{shortAddr(g.address)}</div>
                           <button onClick={() => toggleGroupExpand(g.key)} className="inline-flex items-center gap-1 text-[11.5px]" style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer" }}>
                             {g.movements.length} transacci{g.movements.length === 1 ? "ón" : "ones"}{groupWalletCount(g) > 1 ? ` · ${groupWalletCount(g)} wallets` : ""}
                             <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
@@ -827,7 +827,7 @@ export default function MovementsView(props: MovementsViewProps) {
             ) : (
               selectedAliado.addresses.map((ad) => (
                 <div key={ad.address} className="flex items-center justify-between gap-2 py-1 text-[12px] border-t" style={{ borderColor: "var(--line)" }}>
-                  <span className="flex items-center gap-2 min-w-0"><ChainBadge chain={ad.chain} size={18} /><span className="font-mono truncate">{shortAddr(ad.address)}</span></span>
+                  <span className="flex items-center gap-2 min-w-0"><ChainBadge chain={ad.chain} size={18} /><span className="font-addr truncate">{shortAddr(ad.address)}</span></span>
                   <button className="cv-x" onClick={() => removeAddressFromAliado(selectedAliado.id, ad.address)} title="Quitar dirección" aria-label="Quitar dirección">✕</button>
                 </div>
               ))
@@ -851,7 +851,7 @@ export default function MovementsView(props: MovementsViewProps) {
             selectedAliadoMovements.map((m) => (
               <div key={rowId(m)} className="py-2.5 border-t" style={{ borderColor: "var(--line)" }}>
                 <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                  <span className="text-[11.5px] truncate" style={{ color: "var(--dim)" }}>{fmtDate(m.date)} · {m.walletLabel} · <a className="font-mono" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a></span>
+                  <span className="text-[11.5px] truncate" style={{ color: "var(--dim)" }}>{fmtDate(m.date)} · {m.walletLabel} · <a className="font-addr" style={{ color: "var(--accent)" }} href={m.explorer} target="_blank" rel="noreferrer">{shortAddr(m.counterparty)}</a></span>
                   <span className="font-mono text-[13px] font-semibold flex-shrink-0" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>{m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}{!m.verified && " ⚠"}</span>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-1.5">

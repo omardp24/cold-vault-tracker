@@ -52,7 +52,7 @@ export default function GlobalSearch({
                   {walletMatches.map((w) => (
                     <button key={w.id} className="cv-row w-full text-left px-3.5 py-2" onMouseDown={() => pick(() => onSelectWallet(w))}>
                       <div className="text-[12.5px]" style={{ color: "var(--ink)" }}>{w.label}</div>
-                      <div className="font-mono text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(w.address)}</div>
+                      <div className="font-addr text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(w.address)}</div>
                     </button>
                   ))}
                 </div>
@@ -75,7 +75,7 @@ export default function GlobalSearch({
                       <div className="text-[12.5px]" style={{ color: m.direction === "out" ? "var(--neg)" : "var(--pos)" }}>
                         {m.direction === "out" ? "−" : "+"}{fmtAmt(m.amount)} {m.asset}
                       </div>
-                      <div className="font-mono text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(m.counterparty)}</div>
+                      <div className="font-addr text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(m.counterparty)}</div>
                     </button>
                   ))}
                 </div>

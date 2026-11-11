@@ -86,7 +86,7 @@ function WalletCard({ wallet, balance, usd, share, onOpen }: { wallet: Wallet; b
         <ChainBadge chain={wallet.chain} size={30} />
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-semibold truncate">{wallet.label}</div>
-          <div className="font-mono text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(wallet.address)}</div>
+          <div className="font-addr text-[11px]" style={{ color: "var(--faint)" }}>{shortAddr(wallet.address)}</div>
         </div>
         <ChevronRight size={15} className="flex-shrink-0" style={{ color: "var(--faint)" }} />
       </div>
@@ -170,7 +170,7 @@ function WalletDetail({ wallet, balance, usd, share, onClose, onRemove, onRename
 
       <div className="rounded-xl p-3 mb-3" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
         <div className="text-[10.5px] uppercase tracking-wide mb-1" style={{ color: "var(--faint)" }}>Dirección completa</div>
-        <div className="font-mono text-[11.5px] break-all" style={{ color: "var(--dim)" }}>{wallet.address}</div>
+        <div className="font-addr text-[11.5px] break-all" style={{ color: "var(--dim)" }}>{wallet.address}</div>
         <div className="flex gap-2 mt-2.5">
           <button className="cv-btn-ghost cv-icon-btn" onClick={copyAddress}>{copied ? <><Check size={12} /> ¡Copiada!</> : <><Copy size={12} /> Copiar</>}</button>
           <a className="cv-btn-ghost cv-icon-btn" href={EXPLORER_ADDR[wallet.chain](wallet.address)} target="_blank" rel="noreferrer"><ExternalLink size={12} /> Explorador</a>

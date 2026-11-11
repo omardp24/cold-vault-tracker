@@ -56,7 +56,7 @@ function SignupForm() {
         {initError ? (
           <div className="text-xs rounded-lg p-3" style={{ background: "rgba(255,107,90,.14)", border: "1px solid var(--neg)", color: "var(--neg)" }}>
             No se pudo conectar: {initError}
-            <div className="mt-1" style={{ color: "var(--dim)" }}>Revisa que <span className="font-mono">SUPABASE_URL</span> y <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> estén configurados.</div>
+            <div className="mt-1" style={{ color: "var(--dim)" }}>Revisa que <span className="font-addr">SUPABASE_URL</span> y <span className="font-addr">SUPABASE_SERVICE_ROLE_KEY</span> estén configurados.</div>
           </div>
         ) : hasAnyUser === null ? (
           <div className="text-sm" style={{ color: "var(--dim)" }}>Cargando…</div>
@@ -77,7 +77,7 @@ function SignupForm() {
             {hasAnyUser && (
               <div>
                 <div className="text-[11px] uppercase tracking-wide mb-1" style={{ color: "var(--dim)" }}>Código de invitación</div>
-                <input required className="cv-input w-full font-mono" value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} />
+                <input required className="cv-input w-full font-addr" value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} />
               </div>
             )}
             {error && <div className="text-xs" style={{ color: "var(--neg)" }}>{error}</div>}

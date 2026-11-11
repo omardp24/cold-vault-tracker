@@ -211,7 +211,7 @@ export default function UsersTab({ currentUser }: { currentUser: { id: string; n
               <div className="mt-3 rounded-xl p-3.5 cv-tab-in" style={{ background: "rgba(62,213,152,.12)", border: "1px solid var(--pos)" }}>
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--dim)" }}>Código nuevo</div>
                 <div className="font-mono text-[20px] font-semibold tracking-wide" style={{ color: "var(--pos)" }}>{lastInviteCode}</div>
-                <div className="font-mono text-[11px] mt-1.5 break-all" style={{ color: "var(--dim)" }}>{inviteLink}</div>
+                <div className="font-addr text-[11px] mt-1.5 break-all" style={{ color: "var(--dim)" }}>{inviteLink}</div>
                 <button className="cv-btn-ghost cv-icon-btn mt-2.5" onClick={copyInvite}>{copied ? <><Check size={13} /> ¡Enlace copiado!</> : <><Copy size={13} /> Copiar enlace</>}</button>
               </div>
             )}
@@ -223,7 +223,7 @@ export default function UsersTab({ currentUser }: { currentUser: { id: string; n
                     const st = inv.usedBy ? { t: "usada", c: "var(--pos)", b: "rgba(62,213,152,.14)" } : Date.now() > inv.expiresAt ? { t: "expirada", c: "var(--neg)", b: "rgba(255,107,90,.14)" } : { t: "pendiente", c: "var(--amber)", b: "var(--tint)" };
                     return (
                       <div key={inv.code} className="flex items-center justify-between gap-3 py-2 border-t" style={{ borderColor: "var(--line)" }}>
-                        <span className="font-mono text-[12.5px] truncate" style={{ color: "var(--ink)" }}>{inv.code}</span>
+                        <span className="font-addr text-[12.5px] truncate" style={{ color: "var(--ink)" }}>{inv.code}</span>
                         <span className="cv-tag flex-shrink-0" style={{ background: st.b, color: st.c }}>{st.t}</span>
                       </div>
                     );
