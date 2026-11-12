@@ -41,8 +41,9 @@ export interface MovementsViewProps {
   diag: { name: string; ok: boolean; detail: string }[] | null;
 
   walletSummary: { wallet: Wallet; count: number; outUsd: number; inUsd: number; pending: number; lastDate: number | null }[];
-  walletFilter: string;
-  setWalletFilter: Dispatch<SetStateAction<string>>;
+  /** Wallets elegidas; vacío = todas. */
+  walletFilter: string[];
+  setWalletFilter: Dispatch<SetStateAction<string[]>>;
 
   newAliadoName: string;
   setNewAliadoName: Dispatch<SetStateAction<string>>;
@@ -129,6 +130,14 @@ export interface MovementsViewProps {
   findOwnWallet: (chain: Chain, addr: string | null) => Wallet | undefined;
   saveClassification: (key: string, patch: { aliadoId?: string | null; concepto?: string; isFee?: boolean }) => Promise<boolean>;
   handleAliadoSelect: (m: Movement, value: string) => void;
+}
+
+/** Marca/desmarca una wallet en la hoja de filtros. Vacío significa "todas", así que desmarcar una
+ * con todas activas deja seleccionadas las demás (el caso "todas menos esta"). */
+function toggleWallet(prev: string[], id: string, allIds?: string[]): string[] {
+  if (prev.length === 0) return (allIds || []).filter((x) => x !== id);
+  const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+  return allIds && next.length === allIds.length ? [] : next;
 }
 
 export default function MovementsView(props: MovementsViewProps) {
@@ -377,11 +386,20 @@ export default function MovementsView(props: MovementsViewProps) {
         </div>
       </div>
       <div>
-        <div className="cv-eyebrow mb-1.5">Wallet</div>
-        <select className="cv-select w-full" value={walletFilter} onChange={(e) => setWalletFilter(e.target.value)}>
-          <option value="all">Todas las wallets</option>
-          {wallets.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
-        </select>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <div className="cv-eyebrow">Wallets</div>
+          <button className="text-[12px]" style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer" }} onClick={() => setWalletFilter([])}>
+            {walletFilter.length === 0 ? "Todas" : "Ver todas"}
+          </button>
+        </div>
+        <div className="rounded-xl border" style={{ borderColor: "var(--line)" }}>
+          {wallets.map((w, i) => (
+            <label key={w.id} className="flex items-center gap-2.5 px-3 py-2.5 text-[13px] cursor-pointer" style={{ borderTop: i ? "1px solid var(--line)" : "none" }}>
+              <input type="checkbox" checked={walletFilter.length === 0 || walletFilter.includes(w.id)} onChange={() => setWalletFilter((prev) => toggleWallet(prev, w.id, wallets.map((x) => x.id)))} style={{ accentColor: "var(--accent)", width: 16, height: 16 }} />
+              <ChainBadge chain={w.chain} size={16} /> <span className="truncate">{w.label}</span>
+            </label>
+          ))}
+        </div>
       </div>
       <div>
         <div className="cv-eyebrow mb-1.5">Período</div>
@@ -403,7 +421,7 @@ export default function MovementsView(props: MovementsViewProps) {
         </label>
       </div>
       <div className="flex gap-2 pt-1">
-        <button className="cv-btn-ghost flex-1" onClick={() => { setDirFilter("all"); setEstadoFilter("all"); setWalletFilter("all"); setDateFrom(""); setDateTo(""); setSearchText(""); }}>Limpiar todo</button>
+        <button className="cv-btn-ghost flex-1" onClick={() => { setDirFilter("all"); setEstadoFilter("all"); setWalletFilter([]); setDateFrom(""); setDateTo(""); setSearchText(""); }}>Limpiar todo</button>
         <button className="cv-btn flex-1" onClick={() => setShowFilterSheet(false)}>Ver {filteredMovements.length} movimientos</button>
       </div>
     </div>
@@ -518,13 +536,13 @@ export default function MovementsView(props: MovementsViewProps) {
           {/* Wallets como filtro rápido */}
           {wallets.length > 0 && (
             <div className="cv-scroll-x flex gap-2 mb-3 pb-1" style={{ scrollbarWidth: "none" }}>
-              <button className="cv-tag flex-shrink-0" style={{ padding: "7px 13px", fontSize: 12, cursor: "pointer", border: `1px solid ${walletFilter === "all" ? "var(--accent)" : "var(--line)"}`, background: walletFilter === "all" ? "var(--tint)" : "var(--panel)", color: walletFilter === "all" ? "var(--accent)" : "var(--dim)" }} onClick={() => setWalletFilter("all")}>Todas</button>
+              <button className="cv-tag flex-shrink-0" style={{ padding: "7px 13px", fontSize: 12, cursor: "pointer", border: `1px solid ${walletFilter.length === 0 ? "var(--accent)" : "var(--line)"}`, background: walletFilter.length === 0 ? "var(--tint)" : "var(--panel)", color: walletFilter.length === 0 ? "var(--accent)" : "var(--dim)" }} onClick={() => setWalletFilter([])}>Todas</button>
               {walletSummary.map((ws) => {
-                const on = walletFilter === ws.wallet.id;
+                const on = walletFilter.includes(ws.wallet.id);
                 return (
                   <button key={ws.wallet.id} className="cv-tag flex-shrink-0" title={`${ws.count} movimiento${ws.count !== 1 ? "s" : ""}${ws.lastDate ? ` · último ${fmtDate(ws.lastDate)}` : ""}`}
                     style={{ padding: "5px 12px 5px 6px", fontSize: 12, gap: 6, cursor: "pointer", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--tint)" : "var(--panel)", color: on ? "var(--accent)" : "var(--ink)" }}
-                    onClick={() => setWalletFilter(on ? "all" : ws.wallet.id)}>
+                    onClick={() => setWalletFilter((prev) => (prev.includes(ws.wallet.id) ? prev.filter((x) => x !== ws.wallet.id) : [...prev, ws.wallet.id]))}>
                     <ChainBadge chain={ws.wallet.chain} size={18} /> {ws.wallet.label}
                     {ws.pending > 0 && <span className="font-mono text-[10.5px] rounded-full px-1.5" style={{ background: "var(--accent)", color: "#fff" }}>{ws.pending}</span>}
                   </button>
@@ -749,7 +767,7 @@ export default function MovementsView(props: MovementsViewProps) {
               <div className="text-[11px] mb-2" style={{ color: "var(--faint)" }}>Toca una wallet para ver solo sus movimientos.</div>
               {walletSummary.map((ws) => (
                 <button key={ws.wallet.id} className="cv-row w-full text-left flex items-center gap-3 py-2.5 px-1.5 border-t rounded-md" style={{ borderColor: "var(--line)", background: "none", borderLeft: "none", borderRight: "none", borderBottom: "none", color: "var(--ink)", cursor: "pointer" }}
-                  onClick={() => { setWalletFilter(ws.wallet.id); setView("actividad"); }}>
+                  onClick={() => { setWalletFilter([ws.wallet.id]); setView("actividad"); }}>
                   <ChainBadge chain={ws.wallet.chain} size={26} />
                   <span className="min-w-0 flex-1 block">
                     <span className="flex items-center gap-2"><span className="text-[13px] font-medium truncate">{ws.wallet.label}</span>{ws.pending > 0 && <span className="cv-tag" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> {ws.pending}</span>}</span>

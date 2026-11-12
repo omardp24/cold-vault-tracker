@@ -103,7 +103,9 @@ export default function ColdVault() {
   const [detailAddr, setDetailAddr] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [walletFilter, setWalletFilter] = useState<string>("all");
+  // Wallets elegidas en Movimientos; vacío = todas. Se pueden combinar varias (ej. todas menos una)
+  // y lo que se exporte o vaya al estado de cuenta respeta esa selección.
+  const [walletFilter, setWalletFilter] = useState<string[]>([]);
 
   const [diag, setDiag] = useState<{ name: string; ok: boolean; detail: string }[] | null>(null);
   const [diagRunning, setDiagRunning] = useState(false);
@@ -569,7 +571,7 @@ export default function ColdVault() {
     if (dateTo && m.date > new Date(dateTo).getTime() + 86400000 - 1) return false;
     return true;
   };
-  const passesWalletFilter = (m: any) => walletFilter === "all" || m.walletId === walletFilter;
+  const passesWalletFilter = (m: any) => walletFilter.length === 0 || walletFilter.includes(m.walletId);
   const passesEstadoFilter = (m: Movement) => {
     if (estadoFilter === "all") return true;
     if (estadoFilter === "suspicious") return !isOutOfFlow(m) && !!suspicionFor(m);
@@ -684,7 +686,7 @@ export default function ColdVault() {
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showExportSheet, setShowExportSheet] = useState(false);
   const activeFilterCount =
-    (dirFilter !== "all" ? 1 : 0) + (estadoFilter !== "all" ? 1 : 0) + (walletFilter !== "all" ? 1 : 0) +
+    (dirFilter !== "all" ? 1 : 0) + (estadoFilter !== "all" ? 1 : 0) + (walletFilter.length > 0 ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
   // Bloquea el scroll del fondo mientras una hoja móvil está abierta
