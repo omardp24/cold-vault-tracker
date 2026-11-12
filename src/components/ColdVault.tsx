@@ -110,7 +110,7 @@ export default function ColdVault() {
 
   const [quickAudit, setQuickAudit] = useState<Record<string, { sanctioned: boolean; sanctionLists: string[]; blacklisted: boolean }>>({});
   const [showSuspicious, setShowSuspicious] = useState(false);
-  const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "fee" | "suspicious">("all");
+  const [estadoFilter, setEstadoFilter] = useState<"all" | "pending" | "classified" | "internal" | "swap" | "fee" | "suspicious">("all");
 
   const quickAuditFor = (m: Movement) => (m.counterparty ? quickAudit[`${m.chain}:${m.counterparty.toLowerCase()}`] : undefined);
 
@@ -564,7 +564,8 @@ export default function ColdVault() {
   const passesEstadoFilter = (m: Movement) => {
     if (estadoFilter === "all") return true;
     if (estadoFilter === "suspicious") return !isOutOfFlow(m) && !!suspicionFor(m);
-    if (isOutOfFlow(m)) return estadoFilter === "internal";
+    if (isSwap(m)) return estadoFilter === "swap";
+    if (isInternalTransfer(m)) return estadoFilter === "internal";
     if (effectiveIsFee(m)) return estadoFilter === "fee";
     return estadoFilter === "pending" ? isPending(m) : estadoFilter === "classified" ? !isPending(m) : false;
   };

@@ -18,7 +18,7 @@ type InnerView = "actividad" | "clasificar" | "aliados" | "resumen";
 // «lun, 10 nov 2026» en hora de Caracas — encabezado de cada día en la lista.
 const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("es-VE", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: APP_TZ });
 type DirFilter = "all" | "in" | "out";
-type EstadoFilter = "all" | "pending" | "classified" | "internal" | "fee" | "suspicious";
+type EstadoFilter = "all" | "pending" | "classified" | "internal" | "swap" | "fee" | "suspicious";
 type GroupViewMode = "pending" | "all";
 type GroupBatchEntry = { aliadoId: string; concepto: string; applying: boolean };
 
@@ -370,7 +370,7 @@ export default function MovementsView(props: MovementsViewProps) {
       <div>
         <div className="cv-eyebrow mb-1.5">Estado</div>
         <div className="grid grid-cols-2 gap-2">
-          {([["all", "Cualquiera"], ["pending", "Pendientes"], ["classified", "Clasificados"], ["internal", "Internas / swaps"], ["fee", "Comisiones"], ["suspicious", "Polvo / fraude"]] as const).map(([v, l]) => (
+          {([["all", "Cualquiera"], ["pending", "Pendientes"], ["classified", "Clasificados"], ["internal", "Internas"], ["swap", "Swaps"], ["fee", "Comisiones"], ["suspicious", "Polvo / fraude"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setEstadoFilter(v)} className="rounded-xl py-2.5 text-[13px] font-medium"
               style={{ background: estadoFilter === v ? "var(--accent)" : "var(--panel2)", color: estadoFilter === v ? "#fff" : "var(--ink)", border: "none", cursor: "pointer" }}>{l}</button>
           ))}
@@ -497,7 +497,8 @@ export default function MovementsView(props: MovementsViewProps) {
                 <option value="all">Cualquier estado</option>
                 <option value="pending">Pendientes</option>
                 <option value="classified">Clasificados</option>
-                <option value="internal">Internas / swaps</option>
+                <option value="internal">Internas</option>
+                <option value="swap">Swaps</option>
                 <option value="fee">Comisiones de red</option>
                 <option value="suspicious">Polvo / posible fraude</option>
               </select>
