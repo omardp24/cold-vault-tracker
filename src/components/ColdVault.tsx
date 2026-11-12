@@ -15,7 +15,7 @@ import AssistantPanel from "./coldvault/AssistantPanel";
 import PortfolioView from "./coldvault/PortfolioView";
 import { HistoryRange, PortfolioHistoryPoint } from "./coldvault/EvolutionChart";
 import MovementsView from "./coldvault/MovementsView";
-import { buildStatementData } from "@/lib/statementAggregation";
+import { buildStatementData, findSwaps } from "@/lib/statementAggregation";
 import { assessSuspicion, buildKnownIndex } from "@/lib/suspicious";
 
 // Promesa que se resuelve cuando el usuario responde el modal — deja usar los diálogos de
@@ -369,8 +369,11 @@ export default function ColdVault() {
   const effectiveConcepto = (m: Movement) => classifications[m.key]?.concepto ?? "";
   const effectiveIsFee = (m: Movement) => !!classifications[m.key]?.isFee;
   const isInternalTransfer = (m: Movement) => !!findOwnWallet(m.chain, m.counterparty);
+  // Cambio de moneda (ej. USDT → TRX para gas): igual que una interna, no es flujo ni hay que clasificarlo.
+  const isSwap = (m: Movement) => swapMap.has(m.key);
+  const isOutOfFlow = (m: Movement) => isInternalTransfer(m) || isSwap(m);
   // El polvo y el posible fraude no cuentan como "pendientes por clasificar": no hay nada que clasificar, hay que ignorarlos o verificarlos.
-  const isPending = (m: Movement) => !isInternalTransfer(m) && !effectiveIsFee(m) && !suspicionFor(m) && (!effectiveAliadoId(m) || !effectiveConcepto(m).trim());
+  const isPending = (m: Movement) => !isOutOfFlow(m) && !effectiveIsFee(m) && !suspicionFor(m) && (!effectiveAliadoId(m) || !effectiveConcepto(m).trim());
 
   // Los guardados de una misma clave se encolan (así uno viejo nunca pisa a uno nuevo), se reintentan
   // si el servidor falla, y si al final no se logra guardar se avisa — antes el resultado se ignoraba
@@ -502,6 +505,8 @@ export default function ColdVault() {
     if (FIXED_STABLECOINS.has(m.asset.toUpperCase())) return 1;
     return null;
   };
+  // Mismas reglas que el estado de cuenta (statementAggregation.findSwaps), sobre todo lo cargado.
+  const swapMap = findSwaps(movements, wallets, aliados, classifications, priceLookup);
 
   // Detección de "address poisoning": direcciones distintas que comparten los mismos
   // primeros y últimos caracteres (patrón clásico para hacer que copies la dirección equivocada).
@@ -558,8 +563,8 @@ export default function ColdVault() {
   const passesWalletFilter = (m: any) => walletFilter === "all" || m.walletId === walletFilter;
   const passesEstadoFilter = (m: Movement) => {
     if (estadoFilter === "all") return true;
-    if (estadoFilter === "suspicious") return !isInternalTransfer(m) && !!suspicionFor(m);
-    if (isInternalTransfer(m)) return estadoFilter === "internal";
+    if (estadoFilter === "suspicious") return !isOutOfFlow(m) && !!suspicionFor(m);
+    if (isOutOfFlow(m)) return estadoFilter === "internal";
     if (effectiveIsFee(m)) return estadoFilter === "fee";
     return estadoFilter === "pending" ? isPending(m) : estadoFilter === "classified" ? !isPending(m) : false;
   };
@@ -567,7 +572,7 @@ export default function ColdVault() {
   // El polvo y el posible fraude ENTRANTES no se mezclan con tus movimientos (embasuran la lista y los totales)
   // salvo que los pidas: "verlas por separado" (filtro Polvo / fraude) o "incluirlas". Los envíos TUYOS hacia
   // una dirección parecida a un contacto nunca se ocultan: son lo más grave y hay que verlos siempre.
-  const isHiddenSuspect = (m: Movement) => m.direction === "in" && !isInternalTransfer(m) && !!suspicionFor(m);
+  const isHiddenSuspect = (m: Movement) => m.direction === "in" && !isOutOfFlow(m) && !!suspicionFor(m);
   const suspiciousCount = baseVisibleMovements.filter(isHiddenSuspect).length;
   const visibleMovements = baseVisibleMovements.filter((m) => showSuspicious || estadoFilter === "suspicious" || !isHiddenSuspect(m));
   const dustHiddenCount = movements.filter((m) => passesDateFilter(m) && passesWalletFilter(m)).length - baseVisibleMovements.length;
@@ -576,7 +581,7 @@ export default function ColdVault() {
   // no es entrada ni salida de la tesorería) y separa las comisiones de red.
   const flowSummary = visibleMovements.reduce(
     (acc, m) => {
-      if (isInternalTransfer(m)) return acc;
+      if (isOutOfFlow(m)) return acc;
       const px = safePrice(m);
       const usd = px ? px * m.amount : 0;
       if (effectiveIsFee(m)) { acc.feeUsd += usd; return acc; }
@@ -597,7 +602,7 @@ export default function ColdVault() {
       m.asset,
       m.amount.toString(),
       m.counterparty || "",
-      isInternalTransfer(m) ? "Transferencia interna" : effectiveIsFee(m) ? "Comisión de red" : nameFor(effectiveAliadoId(m) || "sin_clasificar"),
+      isInternalTransfer(m) ? "Transferencia interna" : isSwap(m) ? "Cambio de moneda (swap)" : effectiveIsFee(m) ? "Comisión de red" : nameFor(effectiveAliadoId(m) || "sin_clasificar"),
       effectiveConcepto(m),
       m.explorer,
     ].map((v) => csvEscape(String(v))).join(";"));
@@ -691,7 +696,7 @@ export default function ColdVault() {
     const map = new Map<string, { key: string; chain: Chain; address: string; movements: Movement[]; totals: Record<string, number>; totalsIn: Record<string, number> }>();
     const source = groupViewMode === "pending"
       ? visibleMovements.filter((m) => isPending(m) && m.counterparty)
-      : visibleMovements.filter((m) => !isInternalTransfer(m) && m.counterparty);
+      : visibleMovements.filter((m) => !isOutOfFlow(m) && m.counterparty);
     source.forEach((m) => {
       const groupKey = `${m.chain}:${m.counterparty!.toLowerCase()}`;
       if (!map.has(groupKey)) map.set(groupKey, { key: groupKey, chain: m.chain, address: m.counterparty!, movements: [], totals: {}, totalsIn: {} });
@@ -803,6 +808,7 @@ export default function ColdVault() {
   let internalTotal = { count: 0, assets: {} as Record<string, number> };
   let feeTotal = { count: 0, assets: {} as Record<string, number>, usdApprox: 0 };
   visibleMovements.forEach((m) => {
+    if (isSwap(m)) return;
     if (isInternalTransfer(m)) {
       if (m.direction === "out") {
         internalTotal.count += 1;
@@ -831,7 +837,7 @@ export default function ColdVault() {
 
   const selectedAliado = aliados.find((a) => a.id === selectedAliadoId) || null;
   const selectedAliadoMovements = selectedAliado
-    ? visibleMovements.filter((m) => !isInternalTransfer(m) && effectiveAliadoId(m) === selectedAliado.id)
+    ? visibleMovements.filter((m) => !isOutOfFlow(m) && effectiveAliadoId(m) === selectedAliado.id)
     : [];
   const selectedAliadoTotals = { outAssets: {} as Record<string, number>, outUsd: 0, inAssets: {} as Record<string, number>, inUsd: 0 };
   selectedAliadoMovements.forEach((m) => {
@@ -1141,7 +1147,7 @@ export default function ColdVault() {
             toggleGroupExpand={toggleGroupExpand} expandedGroups={expandedGroups}
             groupWalletCount={groupWalletCount} groupWalletLabels={groupWalletLabels}
             setGroupField={setGroupField} applyGroupClassification={applyGroupClassification}
-            effectiveAliadoId={effectiveAliadoId} effectiveIsFee={effectiveIsFee} isInternalTransfer={isInternalTransfer}
+            effectiveAliadoId={effectiveAliadoId} effectiveIsFee={effectiveIsFee} isInternalTransfer={isInternalTransfer} swapFor={(m: Movement) => swapMap.get(m.key) || null}
             isPending={isPending} findOwnWallet={findOwnWallet} saveClassification={saveClassification}
             handleAliadoSelect={handleAliadoSelect}
           />

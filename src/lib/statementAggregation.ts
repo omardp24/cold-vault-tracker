@@ -1,9 +1,10 @@
 import { FIXED_STABLECOINS } from "./assets";
 import { fmtAmt } from "./format";
+import { detectSwaps, type SwapPair } from "./swaps";
 import type { Aliado, Chain, Classification, Holding, Movement, Wallet } from "@/components/coldvault/shared";
 import type {
   StatementInput, StatementWalletRow, StatementWalletBlock, StatementAliadoGroup,
-  StatementDetailMovement, StatementFeeRow, StatementInternalRow, StatementUnclassifiedRow,
+  StatementDetailMovement, StatementFeeRow, StatementInternalRow, StatementUnclassifiedRow, StatementSwapRow,
 } from "./statementPdf";
 
 // Reimplementación pura (sin hooks/estado de React) de la lógica de clasificación que
@@ -48,6 +49,18 @@ export function safePrice(m: Movement, priceLookup: Record<string, number | null
   if (priceLookup[m.asset] != null) return priceLookup[m.asset];
   if (FIXED_STABLECOINS.has(m.asset.toUpperCase())) return 1;
   return null;
+}
+
+/** Swaps con las mismas reglas en la app y en el estado de cuenta. Un movimiento ya asignado a un
+ * aliado SÍ puede ser parte de un swap: el caso real que motivó esto (100 USDT → TRX vía el swap de
+ * Ledger) estaba clasificado a mano como aliado "Swap Ledger", y la dirección de depósito del
+ * servicio de cambio estaba además cargada en varios aliados. Solo se excluye lo marcado como comisión. */
+export function findSwaps(movements: Movement[], wallets: Wallet[], _aliados: Aliado[], classifications: Record<string, Classification>, priceLookup: Record<string, number | null>): Map<string, SwapPair> {
+  return detectSwaps(
+    movements as any, wallets as any,
+    (m) => safePrice(m as Movement, priceLookup),
+    (m) => effectiveIsFee(m as Movement, classifications),
+  );
 }
 
 export interface StatementAggregationInput {
@@ -98,15 +111,26 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
   const feeMovs: Movement[] = [];
   const internalMovs: Movement[] = [];
   const unclassifiedMovs: Movement[] = [];
+  const swapMap = findSwaps(movements, wallets, aliados, classifications, priceLookup);
+  // Internas y swaps no son flujo, pero sí mueven el saldo de cada wallet: sin esto el "saldo
+  // anterior" de la wallet que envió quedaba por debajo del real (y el de la que recibió, por encima).
+  const otherNetByWallet: Record<string, number> = {};
+  const walletIdOf = (m: Movement) => wallets.find((w) => w.label === m.walletLabel)?.id || m.walletLabel || "—";
 
   movements.forEach((m) => {
-    if (isInternalTransfer(m, wallets)) { internalMovs.push(m); return; }
+    if (isInternalTransfer(m, wallets) || swapMap.has(m.key)) {
+      const px = safePrice(m, priceLookup);
+      const id = walletIdOf(m);
+      otherNetByWallet[id] = (otherNetByWallet[id] || 0) + (px ? px * m.amount : 0) * (m.direction === "in" ? 1 : -1);
+      if (!swapMap.has(m.key)) internalMovs.push(m);
+      return;
+    }
     const px = safePrice(m, priceLookup);
     const usd = px ? px * m.amount : 0;
     if (effectiveIsFee(m, classifications)) { flowSummary.feeUsd += usd; feeMovs.push(m); return; }
     if (m.direction === "out") flowSummary.outUsd += usd; else flowSummary.inUsd += usd;
 
-    const walletId = wallets.find((w) => w.label === m.walletLabel)?.id || m.walletLabel || "—";
+    const walletId = walletIdOf(m);
     const bucket = ensureWallet(walletId);
     bucket.movs.push(m);
 
@@ -131,8 +155,10 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
   const walletRows: StatementWalletRow[] = [];
   const walletBlocks: StatementWalletBlock[] = [];
   wallets.forEach((w) => {
-    const entry = perWallet[w.id];
-    if (!entry || entry.movs.length === 0) return;
+    const entry = perWallet[w.id] || { movs: [], groups: {} };
+    const otherNetUsd = otherNetByWallet[w.id] || 0;
+    // Una wallet que solo tuvo internas/swaps en el período igual sale en el resumen (su saldo cambió).
+    if (entry.movs.length === 0 && !(w.id in otherNetByWallet)) return;
     let inUsd = 0, outUsd = 0;
     entry.movs.forEach((m) => { const px = safePrice(m, priceLookup); const usd = px ? px * m.amount : 0; if (m.direction === "out") outUsd += usd; else inUsd += usd; });
 
@@ -158,13 +184,13 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
     // saldo real de la wallet), y el saldo anterior explica de dónde salió lo que se gastó de más
     // este período frente a lo que entró.
     const closingUsd = walletBalances[w.id] ?? null;
-    const openingUsd = closingUsd !== null ? closingUsd - inUsd + outUsd : null;
+    const openingUsd = closingUsd !== null ? closingUsd - inUsd + outUsd - otherNetUsd : null;
 
     walletRows.push({
       label: w.label, chainLabel: CHAIN_LABEL[w.chain], aliadoCount: groups.length, movCount: entry.movs.length,
-      inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd,
+      inUsd, outUsd, netUsd: inUsd - outUsd, otherNetUsd, openingUsd, closingUsd,
     });
-    walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd, groups });
+    if (entry.movs.length > 0) walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd, groups });
   });
 
   // Transferencias internas: la misma tx aparece dos veces (una vez por wallet involucrada,
@@ -178,6 +204,22 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
     const toWallet = inn?.walletLabel || findOwnWallet(wallets, out.chain, out.counterparty)?.label || "—";
     return { date: out.date, fromWallet: out.walletLabel || "—", toWallet, amount: out.amount, asset: out.asset, txid: out.txid };
   });
+
+  const seenSwap = new Set<string>();
+  const swaps: StatementSwapRow[] = [];
+  movements.forEach((m) => {
+    const p = swapMap.get(m.key);
+    if (!p || seenSwap.has(p.id)) return;
+    seenSwap.add(p.id);
+    const o = p.out as Movement, i = p.in as Movement;
+    const px = safePrice(o, priceLookup);
+    swaps.push({
+      date: o.date, fromWallet: o.walletLabel || "—", outAmount: o.amount, outAsset: o.asset,
+      toWallet: i.walletLabel || "—", inAmount: i.amount, inAsset: i.asset,
+      usd: px !== null ? px * o.amount : null, txOut: o.txid, txIn: i.txid,
+    });
+  });
+  swaps.sort((a, b) => (a.date || 0) - (b.date || 0));
 
   const fees: StatementFeeRow[] = feeMovs.map((m) => {
     const px = safePrice(m, priceLookup);
@@ -205,7 +247,7 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
     movements: movements.map((m) => ({
       date: m.date, walletLabel: m.walletLabel || "", chain: m.chain, direction: m.direction,
       asset: m.asset, amount: m.amount, counterparty: m.counterparty,
-      aliado: isInternalTransfer(m, wallets) ? "Transferencia interna" : effectiveIsFee(m, classifications) ? "Comisión de red" : nameFor(effectiveAliadoId(m, classifications, aliados) || "sin_clasificar", aliados),
+      aliado: isInternalTransfer(m, wallets) ? "Transferencia interna" : swapMap.has(m.key) ? "Cambio de moneda (swap)" : effectiveIsFee(m, classifications) ? "Comisión de red" : nameFor(effectiveAliadoId(m, classifications, aliados) || "sin_clasificar", aliados),
       concepto: effectiveConcepto(m, classifications),
     })),
     aliadoOut: summaryRows.map((r) => ({ name: nameFor(r.id, aliados), assets: Object.entries(r.assets).map(([a, v]) => `${fmtAmt(v)} ${a}`).join(" · "), usdApprox: r.usdApprox })),
@@ -214,6 +256,7 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
     walletBlocks,
     fees,
     internals,
+    swaps,
     unclassified,
   };
 }

@@ -84,3 +84,12 @@ Comandos: `npm run dev -- -p 3010` · `npx tsc --noEmit` (antes: `rm -rf .next` 
 - El servidor de vista previa de la app de escritorio a veces no arranca: usar `npm run dev -- -p 3010` y abrir ese puerto.
 - Capturas tomadas justo tras cargar salen a medio animar: espera ~1 s antes de la captura.
 - Commits: terminan con la línea `Co-Authored-By` que indique el sistema; mensajes en español.
+- Movimientos fuera del flujo: **internas** (contraparte = otra wallet propia de la misma red) y **swaps**
+  (`src/lib/swaps.ts`, vía `findSwaps` en `statementAggregation.ts`: sale un activo y entra OTRO en wallets propias de la
+  misma red en ≤ 1 h y por valor parecido; pueden ser dos tx y dos wallets distintas). Ninguna cuenta en entradas/salidas,
+  pero sí en el saldo anterior de cada wallet (columna «Internas / swaps» del PDF).
+- Tron lee TRC20 **y TRX nativo** (`/transactions`, ≥ 1 TRX; lo menor es polvo). Ese endpoint devuelve direcciones en
+  hex `41…` (no hace caso de `visible=true`): se convierten a base58 en `tron.ts`. El cursor combina ambos flujos (JSON).
+  ETH todavía NO lee ETH nativo (solo tokens de Ethplorer `getAddressHistory`).
+- Ethplorer limita peticiones por segundo: `ethplorerJson()` reintenta ante 429. Las direcciones oficiales de tokens
+  en `eth.ts` deben tener 42 caracteres (estuvieron truncadas y todo el USDT real salía como «token falso»).

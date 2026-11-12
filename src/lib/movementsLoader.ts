@@ -3,6 +3,7 @@ import { historyFetchers } from "./chains";
 import type { HistoryPage, Movement } from "./chains/types";
 import type { Chain, DB } from "./db";
 import { fmtDate } from "./format";
+import { findSwaps } from "./statementAggregation";
 import { assessSuspicion, buildKnownIndex, type Suspicion } from "./suspicious";
 
 // ---------- Datos de apoyo ----------
@@ -42,12 +43,13 @@ export async function loadMovements(db: DB, prices: Record<string, number | null
   };
 
   const raw = collected.filter((m) => m.date && m.date >= since).sort((a, b) => (b.date || 0) - (a.date || 0));
+  const swaps = findSwaps(raw as any, db.wallets as any, db.aliados as any, db.classifications as any, prices);
   const rows: Row[] = raw.map((m) => {
     const cl = db.classifications[m.key];
     const al = aliadoOf(m);
     const px = !m.verified ? null : prices[m.asset] ?? (FIXED_STABLECOINS.has(m.asset.toUpperCase()) ? 1 : null);
     const concepto = cl?.concepto?.trim() || "";
-    const estado = own(m.chain, m.counterparty) ? "transferencia interna" : cl?.isFee ? "comisión de red" : !al || !concepto ? "pendiente" : "clasificado";
+    const estado = own(m.chain, m.counterparty) ? "transferencia interna" : swaps.has(m.key) ? "transferencia interna" : cl?.isFee ? "comisión de red" : !al || !concepto ? "pendiente" : "clasificado";
     return {
       key: m.key, aliadoId: al?.id ?? null, fecha: fmtDate(m.date), wallet: m.walletLabel, direccion: m.direction === "in" ? "entrada" : "salida", monto: m.amount, activo: m.asset,
       usd: px !== null ? Math.round(px * m.amount * 100) / 100 : null, contraparte: m.counterparty, aliado: al?.name || "sin clasificar",

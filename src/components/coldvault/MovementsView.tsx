@@ -3,7 +3,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import {
   ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Ban, ChevronRight, CircleCheck, Clock, CreditCard, Download, ExternalLink, Flag,
-  MoreHorizontal, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Trash2, TriangleAlert, Users as UsersIcon,
+  MoreHorizontal, Pencil, Plus, RefreshCw, Repeat, Search, SlidersHorizontal, Sparkles, Trash2, TriangleAlert, Users as UsersIcon,
 } from "lucide-react";
 import {
   Aliado, CHAIN_LABEL, ChainBadge, Chain, Movement, Sheet, Wallet,
@@ -12,6 +12,7 @@ import {
 import { APP_TZ } from "@/lib/format";
 import ConceptoInput from "./ConceptoInput";
 import TransactionDetailModal, { type TxDetailContext } from "./TransactionDetailModal";
+import type { SwapPair } from "@/lib/swaps";
 
 type InnerView = "actividad" | "clasificar" | "aliados" | "resumen";
 // «lun, 10 nov 2026» en hora de Caracas — encabezado de cada día en la lista.
@@ -122,6 +123,8 @@ export interface MovementsViewProps {
   effectiveAliadoId: (m: Movement) => string | null;
   effectiveIsFee: (m: Movement) => boolean;
   isInternalTransfer: (m: Movement) => boolean;
+  /** El swap del que este movimiento es una de las dos patas (USDT → TRX, etc.), o null. */
+  swapFor: (m: Movement) => SwapPair | null;
   isPending: (m: Movement) => boolean;
   findOwnWallet: (chain: Chain, addr: string | null) => Wallet | undefined;
   saveClassification: (key: string, patch: { aliadoId?: string | null; concepto?: string; isFee?: boolean }) => Promise<boolean>;
@@ -146,7 +149,7 @@ export default function MovementsView(props: MovementsViewProps) {
     showGroupClassifier, setShowGroupClassifier, groupViewMode, setGroupViewMode, feeThreshold, setFeeThreshold,
     markSmallGroupsAsFee, markingFees, pendingGroups, groupExistingAliado, groupBatchState, toggleGroupExpand,
     expandedGroups, groupWalletCount, groupWalletLabels, setGroupField, applyGroupClassification,
-    effectiveAliadoId, effectiveIsFee, isInternalTransfer, isPending, findOwnWallet, saveClassification, handleAliadoSelect,
+    effectiveAliadoId, effectiveIsFee, isInternalTransfer, swapFor, isPending, findOwnWallet, saveClassification, handleAliadoSelect,
   } = props;
 
   // Sugerencia de clasificación con IA — mira movimientos parecidos ya clasificados (mismo
@@ -224,6 +227,7 @@ export default function MovementsView(props: MovementsViewProps) {
 
   const statusTag = (m: Movement) => {
     if (isInternalTransfer(m)) return <span className="cv-tag" style={{ background: "var(--panel2)", color: "var(--accent)" }}><ArrowLeftRight size={10} /> interna</span>;
+    if (swapFor(m)) return <span className="cv-tag" style={{ background: "var(--panel2)", color: "var(--accent)" }}><Repeat size={10} /> swap</span>;
     if (effectiveIsFee(m)) return <span className="cv-tag" style={{ background: "var(--panel2)", color: "var(--dim)" }}><CreditCard size={10} /> comisión</span>;
     if (isPending(m)) return <span className="cv-tag" style={{ background: "var(--tint)", color: "var(--amber)" }}><Clock size={10} /> pendiente</span>;
     return <span className="cv-tag" style={{ background: "rgba(62,213,152,.14)", color: "var(--pos)" }}><CircleCheck size={10} /> clasificado</span>;
@@ -259,6 +263,7 @@ export default function MovementsView(props: MovementsViewProps) {
     const id = rowId(m);
     const pending = isPending(m);
     const internal = isInternalTransfer(m);
+    const swap = swapFor(m);
     const fee = effectiveIsFee(m);
     const editing = pending || openCards.has(id);
     const curAliado = effectiveAliadoId(m);
@@ -268,8 +273,8 @@ export default function MovementsView(props: MovementsViewProps) {
       <div key={id} className="cv-row border-t px-1.5 py-3 md:py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] md:gap-5 md:items-center rounded-md" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-start gap-1 min-w-0">
           <button type="button" className="flex items-start gap-3 min-w-0 flex-1 text-left" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }} onClick={() => setDetailMovement(m)} title="Ver detalle de la operación">
-            <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: internal ? "var(--panel2)" : out ? "rgba(255,107,90,.14)" : "rgba(62,213,152,.14)", color: internal ? "var(--accent)" : out ? "var(--neg)" : "var(--pos)" }}>
-              {internal ? <ArrowLeftRight size={16} /> : out ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}
+            <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: internal || swap ? "var(--panel2)" : out ? "rgba(255,107,90,.14)" : "rgba(62,213,152,.14)", color: internal || swap ? "var(--accent)" : out ? "var(--neg)" : "var(--pos)" }}>
+              {swap ? <Repeat size={16} /> : internal ? <ArrowLeftRight size={16} /> : out ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}
             </span>
             <span className="min-w-0 flex-1 block">
               <span className="flex items-baseline justify-between gap-2">
@@ -289,9 +294,16 @@ export default function MovementsView(props: MovementsViewProps) {
         </div>
 
         <div className="mt-2.5 md:mt-0 min-w-0">
-          {internal ? (
+          {swap ? (
             <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--dim)" }}>
-              {statusTag(m)} <span className="truncate">a tu wallet «{findOwnWallet(m.chain, m.counterparty)?.label}»</span>
+              {statusTag(m)}
+              <span className="truncate">
+                Cambio: {fmtAmt(swap.out.amount)} {swap.out.asset} ({(swap.out as Movement).walletLabel}) → {fmtAmt(swap.in.amount)} {swap.in.asset} ({(swap.in as Movement).walletLabel})
+              </span>
+            </div>
+          ) : internal ? (
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--dim)" }}>
+              {statusTag(m)} <span className="truncate">{out ? "a" : "desde"} tu wallet «{findOwnWallet(m.chain, m.counterparty)?.label}»</span>
             </div>
           ) : fee ? (
             <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--dim)" }}>
@@ -358,7 +370,7 @@ export default function MovementsView(props: MovementsViewProps) {
       <div>
         <div className="cv-eyebrow mb-1.5">Estado</div>
         <div className="grid grid-cols-2 gap-2">
-          {([["all", "Cualquiera"], ["pending", "Pendientes"], ["classified", "Clasificados"], ["internal", "Internas"], ["fee", "Comisiones"], ["suspicious", "Polvo / fraude"]] as const).map(([v, l]) => (
+          {([["all", "Cualquiera"], ["pending", "Pendientes"], ["classified", "Clasificados"], ["internal", "Internas / swaps"], ["fee", "Comisiones"], ["suspicious", "Polvo / fraude"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setEstadoFilter(v)} className="rounded-xl py-2.5 text-[13px] font-medium"
               style={{ background: estadoFilter === v ? "var(--accent)" : "var(--panel2)", color: estadoFilter === v ? "#fff" : "var(--ink)", border: "none", cursor: "pointer" }}>{l}</button>
           ))}
@@ -485,7 +497,7 @@ export default function MovementsView(props: MovementsViewProps) {
                 <option value="all">Cualquier estado</option>
                 <option value="pending">Pendientes</option>
                 <option value="classified">Clasificados</option>
-                <option value="internal">Internas</option>
+                <option value="internal">Internas / swaps</option>
                 <option value="fee">Comisiones de red</option>
                 <option value="suspicious">Polvo / posible fraude</option>
               </select>

@@ -65,6 +65,9 @@ export async function watchAndNotifyMovements(db?: DB): Promise<WatchResult> {
       for (const m of page) {
         if (known.has(m.key) || known.has(baseOf(m.key))) continue;
         toMark.push(m.key);
+        // Algo viejo que recién ahora se ve (ej. el TRX nativo, que antes no se leía) se marca como
+        // visto sin avisar: la vigilancia corre cada pocos minutos, así que lo nuevo de verdad es reciente.
+        if (m.date && Date.now() - m.date > 6 * 3600_000) continue;
 
         const classification = state.classifications[m.key];
         if (classification?.isFee) continue; // ya clasificado como comisión — no es una "operación" nueva que avisar

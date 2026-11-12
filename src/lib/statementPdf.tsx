@@ -106,7 +106,7 @@ export interface StatementMovement {
   asset: string; amount: number; counterparty: string | null; aliado: string; concepto: string;
 }
 export interface StatementAliadoRow { name: string; assets: string; usdApprox: number }
-export interface StatementWalletRow { label: string; chainLabel: string; aliadoCount: number; movCount: number; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null }
+export interface StatementWalletRow { label: string; chainLabel: string; aliadoCount: number; movCount: number; inUsd: number; outUsd: number; netUsd: number; otherNetUsd?: number; openingUsd: number | null; closingUsd: number | null }
 export interface StatementDetailMovement {
   date: number | null; direction: "in" | "out"; amount: number; asset: string;
   counterparty: string | null; txid: string; concepto: string; usd: number | null;
@@ -115,6 +115,7 @@ export interface StatementAliadoGroup { name: string; movs: StatementDetailMovem
 export interface StatementWalletBlock { label: string; chainLabel: string; address: string; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null; groups: StatementAliadoGroup[] }
 export interface StatementFeeRow { date: number | null; walletLabel: string; amount: number; asset: string; usd: number | null; txid: string }
 export interface StatementInternalRow { date: number | null; fromWallet: string; toWallet: string; amount: number; asset: string; txid: string }
+export interface StatementSwapRow { date: number | null; fromWallet: string; outAmount: number; outAsset: string; toWallet: string; inAmount: number; inAsset: string; usd: number | null; txOut: string; txIn: string }
 export interface StatementUnclassifiedRow { date: number | null; walletLabel: string; direction: "in" | "out"; amount: number; asset: string; counterparty: string | null; txid: string; usd: number | null }
 
 export interface StatementInput {
@@ -134,6 +135,7 @@ export interface StatementInput {
   walletBlocks: StatementWalletBlock[];
   fees: StatementFeeRow[];
   internals: StatementInternalRow[];
+  swaps?: StatementSwapRow[];
   unclassified: StatementUnclassifiedRow[];
 }
 
@@ -281,28 +283,30 @@ export function StatementDocument({ input }: { input: StatementInput }) {
             <Text style={styles.h2}>Resumen por wallet</Text>
             <View style={styles.table}>
               <View style={styles.trHead} fixed>
-                <Text style={[styles.th, { width: "21%" }]}>Wallet</Text>
-                <Text style={[styles.th, { width: "9%" }]}>Red</Text>
-                <Text style={[styles.th, { width: "9%", textAlign: "right" }]}>Movs.</Text>
-                <Text style={[styles.th, { width: "14%", textAlign: "right" }]}>Entradas</Text>
-                <Text style={[styles.th, { width: "14%", textAlign: "right" }]}>Salidas</Text>
-                <Text style={[styles.th, { width: "16.5%", textAlign: "right" }]}>Saldo anterior</Text>
-                <Text style={[styles.th, { width: "16.5%", textAlign: "right" }]}>Saldo actual</Text>
+                <Text style={[styles.th, { width: "19%" }]}>Wallet</Text>
+                <Text style={[styles.th, { width: "8%" }]}>Red</Text>
+                <Text style={[styles.th, { width: "7%", textAlign: "right" }]}>Movs.</Text>
+                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Entradas</Text>
+                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Salidas</Text>
+                <Text style={[styles.th, { width: "13%", textAlign: "right" }]}>Internas / swaps</Text>
+                <Text style={[styles.th, { width: "13.5%", textAlign: "right" }]}>Saldo anterior</Text>
+                <Text style={[styles.th, { width: "13.5%", textAlign: "right" }]}>Saldo actual</Text>
               </View>
               {input.walletRows.map((w, i) => (
                 <View style={styles.tr} key={i} wrap={false}>
-                  <Text style={[styles.td, { width: "21%", fontWeight: 600, color: NAVY }]}>{w.label}</Text>
-                  <Text style={[styles.td, { width: "9%", color: DIM }]}>{w.chainLabel}</Text>
-                  <Text style={[styles.tdMono, { width: "9%", textAlign: "right" }]}>{w.movCount}</Text>
-                  <Text style={[styles.tdMono, { width: "14%", textAlign: "right", color: GREEN }]}>{fmtUSD(w.inUsd)}</Text>
-                  <Text style={[styles.tdMono, { width: "14%", textAlign: "right", color: RED }]}>{fmtUSD(w.outUsd)}</Text>
-                  <Text style={[styles.tdMono, { width: "16.5%", textAlign: "right", color: DIM }]}>{w.openingUsd !== null ? fmtUSD(w.openingUsd) : "sin dato"}</Text>
-                  <Text style={[styles.tdMono, { width: "16.5%", textAlign: "right", fontWeight: 600, color: NAVY }]}>{w.closingUsd !== null ? fmtUSD(w.closingUsd) : fmtUSD(w.netUsd)}</Text>
+                  <Text style={[styles.td, { width: "19%", fontWeight: 600, color: NAVY }]}>{w.label}</Text>
+                  <Text style={[styles.td, { width: "8%", color: DIM }]}>{w.chainLabel}</Text>
+                  <Text style={[styles.tdMono, { width: "7%", textAlign: "right" }]}>{w.movCount}</Text>
+                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", color: GREEN }]}>{fmtUSD(w.inUsd)}</Text>
+                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", color: RED }]}>{fmtUSD(w.outUsd)}</Text>
+                  <Text style={[styles.tdMono, { width: "13%", textAlign: "right", color: DIM }]}>{w.otherNetUsd ? `${w.otherNetUsd > 0 ? "+" : "−"}${fmtUSD(Math.abs(w.otherNetUsd))}` : "—"}</Text>
+                  <Text style={[styles.tdMono, { width: "13.5%", textAlign: "right", color: DIM }]}>{w.openingUsd !== null ? fmtUSD(w.openingUsd) : "sin dato"}</Text>
+                  <Text style={[styles.tdMono, { width: "13.5%", textAlign: "right", fontWeight: 600, color: NAVY }]}>{w.closingUsd !== null ? fmtUSD(w.closingUsd) : fmtUSD(w.netUsd)}</Text>
                 </View>
               ))}
             </View>
             <Text style={{ fontSize: 7, color: DIM, marginTop: 4 }}>
-              Saldo anterior = saldo actual de la wallet menos el neto del período (ambos al precio de hoy) — es el saldo estimado al inicio del período, no un histórico de precios. Un neto negativo del período no implica que la wallet haya quedado en negativo.
+              Saldo anterior = saldo actual de la wallet menos el neto del período y lo que se movió entre tus wallets o se cambió de moneda (todo al precio de hoy) — es el saldo estimado al inicio del período, no un histórico de precios. Internas / swaps no son entradas ni salidas de la tesorería, pero sí cambian el saldo de cada wallet.
             </Text>
           </>
         )}
@@ -385,7 +389,7 @@ export function StatementDocument({ input }: { input: StatementInput }) {
         )}
 
         {/* ---- Partidas fuera del flujo ---- */}
-        {(input.fees.length > 0 || input.internals.length > 0 || input.unclassified.length > 0) && (
+        {(input.fees.length > 0 || input.internals.length > 0 || (input.swaps?.length ?? 0) > 0 || input.unclassified.length > 0) && (
           <>
             <Text style={styles.h2}>Partidas fuera del flujo</Text>
 
@@ -440,6 +444,31 @@ export function StatementDocument({ input }: { input: StatementInput }) {
                       <Text style={[styles.td, { width: "26%" }]}>{t.toWallet}</Text>
                       <Text style={[styles.tdMono, { width: "16%", textAlign: "right" }]}>{fmtAmt(t.amount)} {t.asset}</Text>
                       <Text style={[styles.tdMono, { width: "16%", fontSize: 6.5, color: DIM }]}>{t.txid.slice(0, 12)}…</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {input.swaps && input.swaps.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ fontSize: 8, fontWeight: 700, color: ORANGE, textTransform: "uppercase", letterSpacing: 1 }}>Cambios de moneda (swaps)</Text>
+                <Text style={{ fontSize: 7.5, color: DIM, marginTop: 2 }}>Un activo cambiado por otro (ej. USDT por TRX para pagar gas). No afectan entradas, salidas ni neto.</Text>
+                <View style={styles.table}>
+                  <View style={styles.trHead} fixed>
+                    <Text style={[styles.th, { width: "14%" }]}>Fecha</Text>
+                    <Text style={[styles.th, { width: "29%" }]}>Entregado</Text>
+                    <Text style={[styles.th, { width: "29%" }]}>Recibido</Text>
+                    <Text style={[styles.th, { width: "12%", textAlign: "right" }]}>USD aprox.</Text>
+                    <Text style={[styles.th, { width: "16%" }]}>Hash</Text>
+                  </View>
+                  {input.swaps.map((t, i) => (
+                    <View style={styles.tr} key={i} wrap={false}>
+                      <Text style={[styles.tdMono, { width: "14%", fontSize: 7, color: DIM }]}>{fmtDate(t.date)}</Text>
+                      <Text style={[styles.td, { width: "29%" }]}>{fmtAmt(t.outAmount)} {t.outAsset}<Text style={{ color: DIM }}> · {t.fromWallet}</Text></Text>
+                      <Text style={[styles.td, { width: "29%" }]}>{fmtAmt(t.inAmount)} {t.inAsset}<Text style={{ color: DIM }}> · {t.toWallet}</Text></Text>
+                      <Text style={[styles.tdMono, { width: "12%", textAlign: "right" }]}>{fmtUSD(t.usd)}</Text>
+                      <Text style={[styles.tdMono, { width: "16%", fontSize: 6.5, color: DIM }]}>{t.txOut.slice(0, 12)}…</Text>
                     </View>
                   ))}
                 </View>
