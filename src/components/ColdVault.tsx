@@ -643,6 +643,7 @@ export default function ColdVault() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     walletBalances: walletUsd,
+    walletIds: walletFilter,
   });
 
   const generateStatement = async (format: "pdf" | "excel") => {

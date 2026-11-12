@@ -82,6 +82,11 @@ export interface StatementAggregationInput {
    * no tiene dato (falló su lectura en vivo), sus saldos anterior/actual salen null.
    */
   walletBalances: Record<string, number | null>;
+  /** Wallets que salen en el documento (las elegidas en el filtro). Sin esto, todas. `wallets` sigue
+   * siendo la lista completa para reconocer transferencias internas hacia una wallet no incluida. */
+  walletIds?: string[];
+  /** false = omitir las wallets sin movimientos (estado de cuenta de un solo aliado). Por defecto, true. */
+  includeEmptyWallets?: boolean;
 }
 
 const CHAIN_LABEL: Record<Chain, string> = { BTC: "Bitcoin", ETH: "Ethereum", TRON: "Tron" };
@@ -96,7 +101,8 @@ function detailRow(m: Movement, classifications: Record<string, Classification>,
 }
 
 export function buildStatementData(input: StatementAggregationInput): StatementInput {
-  const { wallets, aliados, classifications, movements, priceLookup, holdings, total, incompleteWallets, generatedBy, dateFrom, dateTo, walletBalances } = input;
+  const { wallets, aliados, classifications, movements, priceLookup, holdings, total, incompleteWallets, generatedBy, dateFrom, dateTo, walletBalances, walletIds, includeEmptyWallets = true } = input;
+  const shownWallets = walletIds && walletIds.length > 0 ? wallets.filter((w) => walletIds.includes(w.id)) : wallets;
 
   const flowSummary = { inUsd: 0, outUsd: 0, feeUsd: 0 };
   const aliadoSummary: Record<string, { id: string; assets: Record<string, number>; count: number; usdApprox: number }> = {};
@@ -154,11 +160,16 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
 
   const walletRows: StatementWalletRow[] = [];
   const walletBlocks: StatementWalletBlock[] = [];
-  wallets.forEach((w) => {
+  // Todas las wallets incluidas salen en el documento aunque no hayan tenido movimientos en el período:
+  // con su saldo actual y la nota de que no hubo movimientos (antes desaparecían del estado de cuenta).
+  shownWallets.forEach((w) => {
     const entry = perWallet[w.id] || { movs: [], groups: {} };
     const otherNetUsd = otherNetByWallet[w.id] || 0;
-    // Una wallet que solo tuvo internas/swaps en el período igual sale en el resumen (su saldo cambió).
-    if (entry.movs.length === 0 && !(w.id in otherNetByWallet)) return;
+    const onlyOther = entry.movs.length === 0 && w.id in otherNetByWallet;
+    if (!includeEmptyWallets && entry.movs.length === 0 && !onlyOther) return;
+    const note = entry.movs.length > 0 ? undefined : onlyOther
+      ? "Sin entradas ni salidas en este período; solo transferencias internas o cambios de moneda (ver «Partidas fuera del flujo»)."
+      : "Sin movimientos en este período.";
     let inUsd = 0, outUsd = 0;
     entry.movs.forEach((m) => { const px = safePrice(m, priceLookup); const usd = px ? px * m.amount : 0; if (m.direction === "out") outUsd += usd; else inUsd += usd; });
 
@@ -190,7 +201,7 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
       label: w.label, chainLabel: CHAIN_LABEL[w.chain], aliadoCount: groups.length, movCount: entry.movs.length,
       inUsd, outUsd, netUsd: inUsd - outUsd, otherNetUsd, openingUsd, closingUsd,
     });
-    if (entry.movs.length > 0) walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd, groups });
+    walletBlocks.push({ label: w.label, chainLabel: CHAIN_LABEL[w.chain], address: w.address, inUsd, outUsd, netUsd: inUsd - outUsd, openingUsd, closingUsd, groups, note });
   });
 
   // Transferencias internas: la misma tx aparece dos veces (una vez por wallet involucrada,
@@ -242,7 +253,7 @@ export function buildStatementData(input: StatementAggregationInput): StatementI
     incompleteWallets,
     flowSummary,
     totalPortfolioValue: total,
-    walletCount: wallets.length,
+    walletCount: shownWallets.length,
     holdings: holdings.map((h) => ({ symbol: h.symbol, amount: h.amount, price: h.price, value: h.value })),
     movements: movements.map((m) => ({
       date: m.date, walletLabel: m.walletLabel || "", chain: m.chain, direction: m.direction,

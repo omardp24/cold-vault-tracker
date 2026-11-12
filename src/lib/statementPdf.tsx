@@ -112,7 +112,7 @@ export interface StatementDetailMovement {
   counterparty: string | null; txid: string; concepto: string; usd: number | null;
 }
 export interface StatementAliadoGroup { name: string; movs: StatementDetailMovement[]; inUsd: number; outUsd: number; netUsd: number; assetsNetLabel: string }
-export interface StatementWalletBlock { label: string; chainLabel: string; address: string; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null; groups: StatementAliadoGroup[] }
+export interface StatementWalletBlock { label: string; chainLabel: string; address: string; inUsd: number; outUsd: number; netUsd: number; openingUsd: number | null; closingUsd: number | null; groups: StatementAliadoGroup[]; note?: string }
 export interface StatementFeeRow { date: number | null; walletLabel: string; amount: number; asset: string; usd: number | null; txid: string }
 export interface StatementInternalRow { date: number | null; fromWallet: string; toWallet: string; amount: number; asset: string; txid: string }
 export interface StatementSwapRow { date: number | null; fromWallet: string; outAmount: number; outAsset: string; toWallet: string; inAmount: number; inAsset: string; usd: number | null; txOut: string; txIn: string }
@@ -342,6 +342,9 @@ export function StatementDocument({ input }: { input: StatementInput }) {
                   </View>
                 </View>
 
+                {w.note && (
+                  <Text style={{ fontSize: 8, color: DIM, marginTop: 8, paddingLeft: 10 }}>{w.note}</Text>
+                )}
                 {w.groups.map((g, gi) => (
                   <View key={gi} style={{ borderLeftWidth: 3, borderLeftColor: ORANGE, paddingLeft: 9, marginTop: 10 }}>
                     <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12, borderBottomWidth: 1, borderBottomColor: LINE, paddingBottom: 3 }} wrap={false}>

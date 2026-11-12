@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       generatedBy: `${auth.user.name}${aliado ? ` · Aliado: ${aliado.name}` : ""}`,
       dateFrom: desde, dateTo: hasta,
       walletBalances,
+      includeEmptyWallets: !aliado,
     });
 
     const buffer = format === "pdf" ? await generateStatementPdf(data) : await generateStatementExcel(data);
