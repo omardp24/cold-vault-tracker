@@ -290,13 +290,22 @@ export default function ColdVault() {
     // Se usa allSettled a propósito: si una sola wallet falla (API caída, rate limit),
     // con Promise.all se perdían TODOS los movimientos, incluidos los de las wallets
     // que sí respondieron bien. Ahora carga lo que pueda y solo reporta las que fallaron.
-    const results = await Promise.allSettled(wallets.map(async (w) => {
+    const loadOne = async (w: Wallet) => {
       const res = await fetch(`/api/history?chain=${w.chain}&address=${encodeURIComponent(w.address)}`);
       const d = await res.json();
       if (!res.ok) throw new Error(`${w.label}: ${d.error || res.status}`);
       newCursors[w.id] = d.nextCursor;
       return (d.movements as Movement[]).map((m) => ({ ...m, walletLabel: w.label, walletId: w.id } as any));
-    }));
+    };
+    // Tron en serie, igual que los saldos: cada wallet Tron hace varias llamadas a TronGrid (TRC20 +
+    // TRX nativo) y, pedidas todas a la vez, varias fallaban con 429 — sin el historial de una
+    // wallet se pierden sus movimientos y los swaps que dependen de ella. BTC/ETH siguen en paralelo.
+    const settle = (p: Promise<any[]>) => p.then((value) => ({ status: "fulfilled" as const, value }), (reason) => ({ status: "rejected" as const, reason }));
+    const otherPromise = Promise.all(wallets.map((w) => (w.chain === "TRON" ? null : settle(loadOne(w)))));
+    const tronResults: Record<string, Awaited<ReturnType<typeof settle>>> = {};
+    for (const w of wallets.filter((x) => x.chain === "TRON")) tronResults[w.id] = await settle(loadOne(w));
+    const others = await otherPromise;
+    const results = wallets.map((w, i) => (w.chain === "TRON" ? tronResults[w.id] : others[i]!));
 
     const ok: Movement[] = [];
     results.forEach((r, i) => {
